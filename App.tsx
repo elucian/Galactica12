@@ -1,6 +1,6 @@
 
-// CHECKPOINT: Defender V21.3
-// VERSION: V21.3 - Precision Selection Reticle
+// CHECKPOINT: Defender V15.12
+// VERSION: V15.12 - Unified Selection & Clepsidra Checkpoint
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { GameState, Planet, Moon, MissionType, ShipConfig, Weapon, Shield, GameSettings, EquippedWeapon, WeaponType, QuadrantType, ShipFitting } from './types';
 import { INITIAL_CREDITS, SHIPS, WEAPONS, SHIELDS, PLANETS } from './constants';
@@ -9,7 +9,7 @@ import LandingScene from './components/LandingScene';
 import { getMissionBriefing } from './services/geminiService';
 import { audioService } from './services/audioService';
 
-const SAVE_KEY = 'galactic_defender_v21_0';
+const SAVE_KEY = 'galactic_defender_v15_9';
 
 const ShipIcon = ({ shape, color = 'white', className = '', showJets = false }: { shape: string, color?: string, className?: string, showJets?: boolean }) => {
   return (
@@ -32,7 +32,7 @@ const ShipIcon = ({ shape, color = 'white', className = '', showJets = false }: 
   );
 };
 
-const Starfield = ({ count = 100, isFixed = true, scrollSpeed = 0 }: { count?: number, isFixed?: boolean, scrollSpeed?: number }) => {
+const Starfield = ({ count = 100, isFixed = true, velocity = { x: 0, y: 0 } }: { count?: number, isFixed?: boolean, velocity?: { x: number, y: number } }) => {
   const stars = useMemo(() => {
     const colors = ['#ffffff', '#60a5fa', '#f87171', '#fbbf24', '#ffffff'];
     return Array.from({ length: count }).map((_, i) => ({
@@ -43,7 +43,8 @@ const Starfield = ({ count = 100, isFixed = true, scrollSpeed = 0 }: { count?: n
       color: colors[Math.floor(Math.random() * colors.length)],
       delay: Math.random() * 5,
       duration: 2 + Math.random() * 4,
-      flicker: Math.random() > 0.3
+      flicker: Math.random() > 0.3,
+      parallax: 0.1 + Math.random() * 0.9
     }));
   }, [count]);
 
@@ -52,7 +53,7 @@ const Starfield = ({ count = 100, isFixed = true, scrollSpeed = 0 }: { count?: n
       {stars.map(s => (
         <div
           key={s.id}
-          className={`absolute rounded-full ${s.flicker ? 'animate-pulse' : ''} ${scrollSpeed > 0 ? 'animate-star-scroll' : ''}`}
+          className={`absolute rounded-full ${s.flicker ? 'animate-pulse' : ''}`}
           style={{
             left: `${s.x}%`,
             top: `${s.y}%`,
@@ -60,19 +61,12 @@ const Starfield = ({ count = 100, isFixed = true, scrollSpeed = 0 }: { count?: n
             height: `${s.size}px`,
             backgroundColor: s.color,
             boxShadow: `0 0 ${s.size * 2}px ${s.color}`,
-            animationDelay: `${s.delay}s`,
-            animationDuration: scrollSpeed > 0 ? `${15 / scrollSpeed}s` : `${s.duration}s`,
-            opacity: 0.8
+            opacity: 0.8,
+            transform: `translate(${-velocity.x * s.parallax * 15}px, ${-velocity.y * s.parallax * 15}px)`,
+            transition: 'transform 0.08s linear'
           }}
         />
       ))}
-      <style>{`
-        @keyframes star-scroll {
-          from { transform: translateY(-100vh); }
-          to { transform: translateY(100vh); }
-        }
-        .animate-star-scroll { animation: star-scroll linear infinite; }
-      `}</style>
     </div>
   );
 };
@@ -116,7 +110,7 @@ const LaunchSimulation = ({ onComplete }: { onComplete: () => void }) => {
 
   return (
     <div className="fixed inset-0 z-[1000] bg-[#020205] flex flex-col items-center justify-center overflow-hidden">
-      <Starfield count={300} isFixed scrollSpeed={1.5} />
+      <Starfield count={300} isFixed />
       <div className="absolute bottom-[-110vh] left-1/2 -translate-x-1/2 w-[400vw] h-[180vh] bg-[radial-gradient(circle_at_top,rgba(16,185,129,0.15)_0%,transparent_70%)] rounded-[50%] blur-3xl animate-planet-descend" />
       <div className="absolute bottom-[-105vh] left-1/2 -translate-x-1/2 w-[400vw] h-[180vh] bg-zinc-950 rounded-[50%] border-t-4 border-emerald-500/20 animate-planet-descend flex flex-col items-center pt-20">
          <div className="w-full h-full bg-[radial-gradient(ellipse_at_top,rgba(16,185,129,0.05)_0%,transparent_60%)]" />
@@ -173,9 +167,9 @@ const App: React.FC = () => {
     setIsLoading(true);
     let targetPlanet: Planet | null = entity && 'moons' in entity ? entity : null;
     let targetMoon: Moon | null = entity && !('moons' in entity) ? entity : null;
-    let missionType = MissionType.ATTACK;
+    let missionType = entity.id === 'comet_gama' ? MissionType.COMET : MissionType.ATTACK;
     setGameState(prev => ({ ...prev, currentPlanet: targetPlanet, currentMoon: targetMoon, currentMission: missionType, dockedPlanetId: null }));
-    const briefingText = await getMissionBriefing(entity.name, MissionType.ATTACK);
+    const briefingText = await getMissionBriefing(entity.name, missionType);
     setBriefing(briefingText);
     setIsLoading(false);
     setScreenState('briefing');
@@ -194,7 +188,7 @@ const App: React.FC = () => {
         <div className="flex-grow flex flex-col items-center justify-center relative p-6 md:p-10">
           <Starfield count={150} isFixed />
           <div className="relative z-10 text-center space-y-6 md:space-y-10 max-w-3xl">
-            <h1 className="retro-font text-3xl md:text-7xl text-emerald-500 animate-pulse drop-shadow-[0_0_20px_rgba(16,185,129,0.4)] uppercase">Galactic Defender</h1>
+            <h1 className="retro-font text-3xl md:text-7xl text-emerald-400 animate-pulse drop-shadow-[0_0_20px_rgba(16,185,129,0.4)] uppercase">Galactic Defender</h1>
             <div className="bg-white/5 p-6 md:p-10 border border-white/10 backdrop-blur-xl space-y-4 md:space-y-6 rounded-lg shadow-2xl">
               <p className="text-emerald-400 text-sm md:text-xl leading-relaxed uppercase tracking-widest font-bold">Year 2348: Outer Rim Expansion</p>
               <p className="text-zinc-400 text-[10px] md:text-base leading-relaxed uppercase tracking-tighter">Alien signals have disrupted our colonies. Our outposts are falling silent. You are authorized to defend our sectors at any cost.</p>
@@ -243,7 +237,7 @@ const App: React.FC = () => {
                 <div className="bg-zinc-900/60 border border-white/10 p-8 max-w-lg w-full space-y-8 rounded-lg backdrop-blur-2xl shadow-2xl">
                    <h3 className="retro-font text-lg text-emerald-400 uppercase tracking-widest text-center">Pilot Matrix</h3>
                    <div className="space-y-4">
-                      <div><label className="retro-font text-[10px] text-zinc-500 uppercase block mb-2">Callsign</label><input value={gameState.pilotName} onChange={(e) => updatePilot(e.target.value, gameState.pilotAvatar)} className="w-full bg-white/5 border border-white/10 p-4 text-emerald-400 uppercase retro-font text-xs outline-none focus:border-emerald-500 rounded-lg" /></div>
+                      <div><label className="retro-font text-[10px] text-zinc-500 uppercase block mb-2">Callsign</label><input value={gameState.pilotName} onChange={(e) => updatePilot(gameState.pilotName, gameState.pilotAvatar)} className="w-full bg-white/5 border border-white/10 p-4 text-emerald-400 uppercase retro-font text-xs outline-none focus:border-emerald-500 rounded-lg" /></div>
                       <div><label className="retro-font text-[10px] text-zinc-500 uppercase block mb-2">Bio-Avatar</label><div className="flex gap-4 text-3xl">{['👨‍🚀', '👩‍🚀', '👽', '🤖', '💀'].map(a => (<button key={a} onClick={() => updatePilot(gameState.pilotName, a)} className={`p-3 border transition-all rounded-lg ${gameState.pilotAvatar === a ? 'border-emerald-500 bg-emerald-500/10' : 'border-white/10 hover:bg-white/10'}`}>{a}</button>))}</div></div>
                       <div><label className="retro-font text-[10px] text-zinc-500 uppercase block mb-2">Hull Coating</label><div className="flex gap-3">{['#10b981', '#3b82f6', '#ef4444', '#f59e0b', '#a855f7', '#ffffff'].map(c => (<button key={c} onClick={() => updateShipColor(c)} className={`w-10 h-10 rounded-full border-2 transition-transform hover:scale-125 ${gameState.shipColors[gameState.selectedShipId!] === c ? 'border-white shadow-[0_0_10px_white]' : 'border-transparent'}`} style={{ backgroundColor: c }} />))}</div></div>
                    </div>
@@ -282,7 +276,7 @@ const App: React.FC = () => {
           </div>
         </div>
       )}
-      {isLoading && <div className="fixed inset-0 z-[2000] bg-black/80 backdrop-blur-2xl flex items-center justify-center"><div className="retro-font text-emerald-500 text-xs animate-pulse tracking-[0.8em] uppercase">Synchronizing Fleet Uplink...</div></div>}
+      {isLoading && <div className="fixed inset-0 z-[2000] bg-black/80 backdrop-blur-2xl flex items-center justify-center"><div className="retro-font text-emerald-400 text-xs animate-pulse tracking-[0.8em] uppercase">Synchronizing Fleet Uplink...</div></div>}
     </div>
   );
 };
@@ -291,14 +285,36 @@ const App: React.FC = () => {
 
 const MapScreen = ({ planets, onArrival, currentQuadrant, onOpenWarp, initialFocusId, pilotAvatar, pilotName, selectedShipId, shipColors, onReturnHome, autoDock }: any) => {
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(initialFocusId || null);
+  const [hoveredEntityId, setHoveredEntityId] = useState<string | null>(null);
   const [camZoom, setCamZoom] = useState(0.01); 
   const [camOffset, setCamOffset] = useState({ x: 100, y: 0 }); 
   const [isScanning, setIsScanning] = useState(false);
   const [localTime, setLocalTime] = useState(0);
   const [isIntroZooming, setIsIntroZooming] = useState(true);
+  const [isTracking, setIsTracking] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [isAnimating, setIsAnimating] = useState(false);
+  const [isManualZooming, setIsManualZooming] = useState(false);
+  const [isCalculating, setIsCalculating] = useState(false); 
+  const [isStatusMinimized, setIsStatusMinimized] = useState(false);
+  const [isTacticalMinimized, setIsTacticalMinimized] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const mapContainerRef = useRef<HTMLDivElement>(null);
+  const outerWrapperRef = useRef<HTMLDivElement>(null);
+
+  const cometState = useRef({ 
+    angle: Math.random() * Math.PI * 2,
+    orbitPrecession: Math.random() * Math.PI * 2,
+    periapsis: 140, 
+    apapsis: 1200, 
+    eccentricity: 0.45, 
+    scale: 4.5, 
+    lastUpdate: 0,
+    currentSpeedFactor: 1.0,
+    prevPos: { x: 0, y: 0 },
+    velocity: { x: 0, y: 0 }
+  });
+  const [cometVisuals, setCometVisuals] = useState({ x: 0, y: 0, tailLen: 60, tailAngle: 0, isSelectable: false, proximityFactor: 0 });
 
   const radiusRange = useMemo(() => { if (planets.length === 0) return { min: 1, max: 1000 }; const r = planets.map((p: any) => p.orbitRadius); return { min: Math.min(...r), max: Math.max(...r) }; }, [planets]);
   const planetOffsets = useMemo(() => { return planets.reduce((acc: any, p: any) => { acc[p.id] = { startAngle: Math.random() * Math.PI * 2, spinSpeed: (Math.random() * 2 + 1) * (Math.random() > 0.5 ? 1 : -1) }; return acc; }, {}); }, [planets]);
@@ -306,17 +322,46 @@ const MapScreen = ({ planets, onArrival, currentQuadrant, onOpenWarp, initialFoc
   const SUN_COLORS: Record<string, string> = { [QuadrantType.ALFA]: '#fbbf24', [QuadrantType.BETA]: '#f97316', [QuadrantType.GAMA]: '#60a5fa', [QuadrantType.DELTA]: '#000000' };
   const currentSunColor = SUN_COLORS[currentQuadrant] || '#f97316';
   const isDelta = currentQuadrant === QuadrantType.DELTA;
+  const isGama = currentQuadrant === QuadrantType.GAMA;
 
-  const normalizedTime = Date.now() / 1000;
-  const cycleDuration = 35;
-  const beamVisibleDuration = 10;
-  const jetActive = (normalizedTime % cycleDuration) < beamVisibleDuration;
-  const jetWobble = Math.sin(normalizedTime * 2) * 10; 
-  const baseRotation = 35; 
+  const SUN_OBJECT = { id: 'sun', name: isDelta ? 'SINGULARITY' : 'Sol Prime', description: isDelta ? 'A massive black hole consuming everything in its path.' : 'The massive star at the center of the sector.', status: 'neutral', size: 10.24, color: currentSunColor };
+  const COMET_OBJECT = { id: 'comet_gama', name: 'X-77 ICARUS', description: 'A massive yellow comet with a variable tail. High eccentricity orbit stabilized by the Gama-3 gravity well.', status: 'occupied', size: 1.2, color: '#facc15' };
 
-  const SUN_OBJECT = { id: 'sun', name: isDelta ? 'SINGULARITY' : 'Sol Prime', description: isDelta ? 'A massive black hole consuming everything in its path.' : 'The massive star at the center of the sector.', status: 'neutral', size: 5.6, color: currentSunColor };
+  const getPlanetOrbitData = useCallback((p: any) => {
+    const offsets = planetOffsets[p.id] || { startAngle: 0 };
+    const distFactor = radiusRange.max === radiusRange.min ? 1 : (radiusRange.max - p.orbitRadius) / (radiusRange.max - radiusRange.min);
+    const speedMultiplier = (1.0 + (0.5 * distFactor)) * 2.25; 
+    const angle = localTime * (p.orbitSpeed * 4.32 * speedMultiplier) * (p.orbitDirection || 1) + offsets.startAngle;
+    return { x: Math.cos(angle) * p.orbitRadius * 6, y: Math.sin(angle) * p.orbitRadius * 6, angle };
+  }, [localTime, planetOffsets, radiusRange]);
 
-  useEffect(() => { const interval = setInterval(() => setLocalTime(t => t + 0.018), 16); return () => clearInterval(interval); }, []);
+  useEffect(() => { 
+    const interval = setInterval(() => {
+      setLocalTime(t => t + 0.018);
+      if (isGama) {
+        const c = cometState.current;
+        const a = (c.periapsis + c.apapsis) / 2;
+        const r = (a * (1 - Math.pow(c.eccentricity, 2))) / (1 + c.eccentricity * Math.cos(c.angle));
+        const proximityFactor = (r - c.periapsis) / (c.apapsis - c.periapsis);
+        const stepBase = 0.0032; 
+        const keplerAccel = Math.pow(a / r, 1.6); 
+        c.angle += stepBase * keplerAccel * (0.5 + proximityFactor * 0.7); 
+        const finalAngle = c.angle + c.orbitPrecession;
+        let cx = Math.cos(finalAngle) * r * c.scale;
+        let cy = Math.sin(finalAngle) * r * c.scale;
+        c.velocity = { x: cx - c.prevPos.x, y: cy - c.prevPos.y };
+        c.prevPos = { x: cx, y: cy };
+        const baseTailLen = 140;
+        const tailLen = baseTailLen * (1 - proximityFactor);
+        const tailAngle = Math.atan2(cy, cx) * (180 / Math.PI);
+        setCometVisuals({ x: cx, y: cy, tailLen, tailAngle, isSelectable: r < c.periapsis * 6.0, proximityFactor });
+        if (isTracking && selectedEntityId === 'comet_gama' && !isDragging && !isAnimating) {
+          setCamOffset(prev => ({ x: prev.x + (-cx - prev.x) * 0.12, y: prev.y + (-cy - prev.y) * 0.12 }));
+        }
+      }
+    }, 16); 
+    return () => clearInterval(interval); 
+  }, [isGama, isTracking, selectedEntityId, isDragging, isAnimating]);
 
   useEffect(() => {
     const startZoom = 0.0625;
@@ -337,166 +382,365 @@ const MapScreen = ({ planets, onArrival, currentQuadrant, onOpenWarp, initialFoc
     animate();
   }, [currentQuadrant, autoDock]);
 
-  const selectedEntity = useMemo(() => { if (selectedEntityId === 'sun') return SUN_OBJECT; return planets.find((p: any) => p.id === selectedEntityId); }, [selectedEntityId, planets, currentQuadrant, SUN_OBJECT]);
-  const selectEntity = (id: string | null) => { if (isIntroZooming) return; audioService.playSfx('click'); setSelectedEntityId(id); };
+  const isAnyZoomingActive = isAnimating || isManualZooming || isIntroZooming;
 
-  const getPlanetOrbitData = useCallback((p: any) => {
-    const offsets = planetOffsets[p.id] || { startAngle: 0 };
-    const distFactor = radiusRange.max === radiusRange.min ? 1 : (radiusRange.max - p.orbitRadius) / (radiusRange.max - radiusRange.min);
-    const speedMultiplier = 1.0 + (0.5 * distFactor);
-    const angle = localTime * (p.orbitSpeed * 4.32 * speedMultiplier) * (p.orbitDirection || 1) + offsets.startAngle;
-    return { x: Math.cos(angle) * p.orbitRadius * 6, y: Math.sin(angle) * p.orbitRadius * 6, angle };
-  }, [localTime, planetOffsets, radiusRange]);
+  const selectedEntity = useMemo(() => { 
+    if (selectedEntityId === 'sun') return SUN_OBJECT; 
+    if (selectedEntityId === 'comet_gama') return COMET_OBJECT;
+    return planets.find((p: any) => p.id === selectedEntityId); 
+  }, [selectedEntityId, planets, SUN_OBJECT, COMET_OBJECT]);
+
+  const selectEntity = (id: string | null) => { if (isIntroZooming || isCalculating) return; audioService.playSfx('click'); setSelectedEntityId(id); setIsTracking(false); };
 
   const focusOnSelected = useCallback(() => {
-    if (!selectedEntity) return;
+    if (!selectedEntity || isCalculating) return;
+    setIsAnimating(true);
     let x = 0, y = 0;
-    if (selectedEntity.id !== 'sun') { const data = getPlanetOrbitData(selectedEntity); x = data.x; y = data.y; }
+    if (selectedEntity.id === 'comet_gama') { x = cometVisuals.x; y = cometVisuals.y; }
+    else if (selectedEntity.id !== 'sun') { const data = getPlanetOrbitData(selectedEntity); x = data.x; y = data.y; }
     const targetZoom = Math.min(2.5, 60 / (selectedEntity.size * 25));
     let startZoom = camZoom; let startX = camOffset.x; let startY = camOffset.y; let start = Date.now(); const dur = 1000;
-    const anim = () => { let elapsed = Date.now() - start; let p = Math.min(elapsed / dur, 1); let e = 1 - Math.pow(1 - p, 4); setCamZoom(startZoom + e * (targetZoom - startZoom)); setCamOffset({ x: startX + e * (-x - startX), y: startY + e * (-y - startY) }); if (p < 1) requestAnimationFrame(anim); };
+    const anim = () => { 
+      let elapsed = Date.now() - start; 
+      let p = Math.min(elapsed / dur, 1); 
+      let e = 1 - Math.pow(1 - p, 4); 
+      setCamZoom(startZoom + e * (targetZoom - startZoom)); 
+      setCamOffset({ x: startX + e * (-x - startX), y: startY + e * (-y - startY) }); 
+      if (p < 1) requestAnimationFrame(anim); 
+      else { setIsAnimating(false); setIsTracking(true); } 
+    };
     anim();
-  }, [selectedEntity, camZoom, camOffset, getPlanetOrbitData]);
+  }, [selectedEntity, camZoom, camOffset, getPlanetOrbitData, cometVisuals, isCalculating]);
 
   const focusAndDock = () => { if (!initialFocusId) return; const ent = planets.find((p: any) => p.id === initialFocusId); if (ent) { setSelectedEntityId(initialFocusId); focusOnSelected(); setTimeout(() => onArrival(ent), 1500); } };
-  const resetView = () => { if (isIntroZooming) return; setCamZoom(0.15625); setCamOffset({ x: 0, y: 0 }); setSelectedEntityId(null); };
+  const resetView = () => { if (isIntroZooming || isCalculating) return; setIsTracking(false); setIsAnimating(true); const startZoom = camZoom; const startX = camOffset.x; const startY = camOffset.y; const dur = 800; let start = Date.now(); const anim = () => { let p = Math.min((Date.now() - start) / dur, 1); let e = 1 - Math.pow(1 - p, 3); setCamZoom(startZoom + e * (0.15625 - startZoom)); setCamOffset({ x: startX + e * (0 - startX), y: startY + e * (0 - startY) }); if (p < 1) requestAnimationFrame(anim); else { setIsAnimating(false); setSelectedEntityId(null); } }; anim(); };
 
-  const handleMouseDown = (e: React.MouseEvent) => { if (isIntroZooming) return; const target = e.target as HTMLElement; if (target.closest('.clickable-body')) { if (selectedEntityId) { setIsDragging(true); setDragStart({ x: e.clientX, y: e.clientY }); } } };
-  const handleMouseMove = (e: React.MouseEvent) => { if (!isDragging) return; const dx = (e.clientX - dragStart.x) / camZoom; const dy = (e.clientY - dragStart.y) / camZoom; setCamOffset(prev => ({ x: prev.x + dx, y: prev.y + dy })); setDragStart({ x: e.clientX, y: e.clientY }); };
-  const handleMouseUp = () => setIsDragging(false);
+  /**
+   * Universal Hit-Testing Engine:
+   * Maps viewport screen coordinates back into world coordinates by reversing
+   * the map's current scale and translation.
+   */
+  const getHitEntity = useCallback((clientX: number, clientY: number) => {
+    const rect = outerWrapperRef.current?.getBoundingClientRect();
+    if (!rect) return null;
+    
+    // Constant screen center reference
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    
+    // Reverse Transform Mapping: (Screen - Center) / Scale - Offset = WorldCoord
+    const worldX = (clientX - centerX) / camZoom - camOffset.x;
+    const worldY = (clientY - centerY) / camZoom - camOffset.y;
 
-  const scrollRange = 1000; const hScrollPos = ((camOffset.x + scrollRange) / (scrollRange * 2)) * 100; const vScrollPos = ((camOffset.y + scrollRange) / (scrollRange * 2)) * 100;
-  const handleHScroll = (e: React.ChangeEvent<HTMLInputElement>) => { const val = parseFloat(e.target.value); setCamOffset(prev => ({ ...prev, x: (val / 100) * (scrollRange * 2) - scrollRange })); };
-  const handleVScroll = (e: React.ChangeEvent<HTMLInputElement>) => { const val = parseFloat(e.target.value); setCamOffset(prev => ({ ...prev, y: (val / 100) * (scrollRange * 2) - scrollRange })); };
+    let closestId: string | null = null;
+    let minDistanceSq = Infinity;
 
-  // Calculate precision dimensions for the selection reticle to keep screen-space appearance constant
+    // Minimum magnetic snap radius (in screen-pixels, scaled to world-space)
+    const SNAP_RADIUS_PX = 28; 
+    const SNAP_RADIUS_WORLD = SNAP_RADIUS_PX / camZoom;
+
+    // Hit-test Nucleus (Sun) at 0,0 World
+    const sunDistSq = worldX * worldX + worldY * worldY;
+    const sunVisualRadius = (SUN_OBJECT.size * 25) / 2;
+    const sunHitbox = Math.max(sunVisualRadius, SNAP_RADIUS_WORLD);
+    if (sunDistSq < sunHitbox * sunHitbox) {
+      minDistanceSq = sunDistSq; closestId = 'sun';
+    }
+
+    // Hit-test Comet (Icarus)
+    if (isGama && cometVisuals.isSelectable) {
+      const dx = worldX - cometVisuals.x;
+      const dy = worldY - cometVisuals.y;
+      const distSq = dx * dx + dy * dy;
+      const cometHitbox = Math.max(20, SNAP_RADIUS_WORLD);
+      if (distSq < cometHitbox * cometHitbox && distSq < minDistanceSq) {
+        minDistanceSq = distSq; closestId = 'comet_gama';
+      }
+    }
+
+    // Hit-test Planets (Recalculated every selection attempt to track orbit)
+    planets.forEach((p: any) => {
+      const data = getPlanetOrbitData(p);
+      const dx = worldX - data.x;
+      const dy = worldY - data.y;
+      const distSq = dx * dx + dy * dy;
+      const planetVisualRadius = (p.size * 25) / 2;
+      const planetHitbox = Math.max(planetVisualRadius, SNAP_RADIUS_WORLD);
+      if (distSq < planetHitbox * planetHitbox && distSq < minDistanceSq) {
+        minDistanceSq = distSq; closestId = p.id;
+      }
+    });
+
+    return closestId;
+  }, [camZoom, camOffset, getPlanetOrbitData, isGama, planets, cometVisuals]);
+
+  const handleMouseMove = (e: React.MouseEvent) => { 
+    if (isIntroZooming || isCalculating) return;
+    if (isDragging) {
+      const dx = (e.clientX - dragStart.x) / camZoom; 
+      const dy = (e.clientY - dragStart.y) / camZoom; 
+      setCamOffset(prev => ({ x: prev.x + dx, y: prev.y + dy })); 
+      setDragStart({ x: e.clientX, y: e.clientY }); 
+      return;
+    }
+    setHoveredEntityId(getHitEntity(e.clientX, e.clientY));
+  };
+
+  const handleMouseDown = (e: React.MouseEvent) => { 
+    if (isIntroZooming || isCalculating) return; 
+    const hitId = getHitEntity(e.clientX, e.clientY);
+    
+    // Logic: If user clicks the currently selected entity, allow dragging.
+    // Otherwise, treat as a new selection attempt.
+    if (hitId) {
+      if (hitId === selectedEntityId) {
+        setIsDragging(true); 
+        setIsTracking(false); 
+        setDragStart({ x: e.clientX, y: e.clientY }); 
+      } else {
+        selectEntity(hitId);
+      }
+    }
+  };
+
+  const handleMouseUp = () => {
+    if (isDragging) {
+      setIsDragging(false);
+      // Trigger Clepsidra Protocol
+      setIsCalculating(true);
+      setTimeout(() => { setIsCalculating(false); }, 1000); 
+    }
+  };
+
+  const scrollRange = 1000;
+  const hScrollPos = ((scrollRange - camOffset.x) / (scrollRange * 2)) * 100; 
+  const vScrollPos = ((scrollRange - camOffset.y) / (scrollRange * 2)) * 100;
+
+  const handleHScroll = (e: React.ChangeEvent<HTMLInputElement>) => { if (isCalculating) return; setIsTracking(false); const val = parseFloat(e.target.value); setCamOffset(prev => ({ ...prev, x: scrollRange - (val / 100 * (scrollRange * 2)) })); };
+  const handleVScroll = (e: React.ChangeEvent<HTMLInputElement>) => { if (isCalculating) return; setIsTracking(false); const val = parseFloat(e.target.value); setCamOffset(prev => ({ ...prev, y: scrollRange - (val / 100 * (scrollRange * 2)) })); };
+
   const reticleThickness = 2 / camZoom;
-  const reticleOffset = 16 / camZoom; // 8px from surface (radial) = 16px diameter offset
+  const reticleOffset = 16 / camZoom; 
+  const starVelocity = (isTracking && selectedEntityId === 'comet_gama') ? cometState.current.velocity : { x: 0, y: 0 };
+
+  const mapCursorClass = isCalculating
+    ? 'cursor-wait'
+    : (isDragging 
+        ? 'cursor-grabbing' 
+        : (hoveredEntityId 
+            ? (hoveredEntityId === selectedEntityId ? 'cursor-grab' : 'cursor-pointer') 
+            : 'cursor-crosshair'));
 
   return (
-    <div className="flex-grow w-full relative bg-[#010103] flex items-center justify-center overflow-hidden" onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}>
-      <Starfield count={300} isFixed />
-      <div ref={mapContainerRef} onMouseDown={handleMouseDown} className={`absolute inset-0 transition-transform duration-[400ms] cubic-bezier(0.4, 0, 0.2, 1) flex items-center justify-center ${isDragging ? 'cursor-grabbing' : 'cursor-crosshair'}`} style={{ transform: `scale(${camZoom}) translate(${camOffset.x}px, ${camOffset.y}px)` }}>
-        <div className="relative w-full h-full flex items-center justify-center pointer-events-auto">
-            {/* CENTRAL STAR / SINGULARITY */}
-            <div className="relative z-10 flex items-center justify-center pointer-events-none sun-container">
-              {selectedEntityId === 'sun' && (
-                <div 
-                  className="absolute border-dashed border-emerald-400 rounded-full pointer-events-none" 
-                  style={{ 
-                    width: (160 + reticleOffset) + 'px', 
-                    height: (160 + reticleOffset) + 'px', 
-                    borderWidth: reticleThickness + 'px',
-                    transform: `rotate(${localTime * 5}deg)`, 
-                    zIndex: 20 
-                  }} 
-                />
-              )}
-              
-              {/* SINGULARITY JET (BEHIND BLACK HOLE) */}
-              {isDelta && jetActive && (
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ transform: `rotate(${baseRotation + jetWobble}deg)`, zIndex: 5 }}>
-                  <div className="absolute w-2 h-[800px] bg-gradient-to-t from-blue-400 via-blue-200 to-transparent shadow-[0_0_80px_#60a5fa] blur-[1px] opacity-100 origin-bottom" style={{ bottom: '48px' }} />
-                  <div className="absolute w-2 h-[800px] bg-gradient-to-b from-blue-400 via-blue-200 to-transparent shadow-[0_0_80px_#60a5fa] blur-[1px] opacity-100 origin-top" style={{ top: '48px' }} />
-                  
-                  {/* Pole Turbulence (Visible only when zoomed in) */}
-                  {camZoom > 0.7 && (
-                    <>
-                      <div className="absolute w-12 h-6 bg-blue-300/30 rounded-[50%] blur-md animate-pulse-fast origin-center" style={{ bottom: '40px' }} />
-                      <div className="absolute w-12 h-6 bg-blue-300/30 rounded-[50%] blur-md animate-pulse-fast origin-center" style={{ top: '40px' }} />
-                      <div className="absolute w-20 h-4 bg-white/20 rounded-[50%] blur-xl animate-distort" style={{ bottom: '44px' }} />
-                      <div className="absolute w-20 h-4 bg-white/20 rounded-[50%] blur-xl animate-distort" style={{ top: '44px' }} />
-                    </>
-                  )}
-                </div>
-              )}
-
-              {/* EVENT HORIZON */}
-              <div 
-                className={`clickable-body w-32 h-32 md:w-40 md:h-40 rounded-full flex items-center justify-center cursor-pointer pointer-events-auto transition-all ${selectedEntityId === 'sun' ? 'cursor-grab' : 'hover:scale-105'}`} 
-                onClick={(e) => { e.stopPropagation(); selectEntity('sun'); }} 
-                style={{ 
-                    backgroundColor: isDelta ? '#000' : currentSunColor, 
-                    boxShadow: isDelta ? `0 0 120px rgba(255,140,0,0.3), 0 0 50px rgba(96,165,250,0.15), inset 0 0 80px rgba(255,255,255,0.08)` : `0 0 180px ${currentSunColor}, 0 0 60px white, 0 0 300px ${currentSunColor}44`,
-                    zIndex: 10
-                }}
-              >
-                {isDelta && <div className="absolute w-[350%] h-[60%] bg-[radial-gradient(ellipse_at_center,rgba(255,165,0,0.25)_0%,transparent_70%)] blur-3xl animate-spin-slow opacity-90" style={{ animationDuration: '18s' }} />}
-                {isDelta && <div className="absolute w-[220%] h-[220%] bg-[conic-gradient(from_0deg,transparent_0%,rgba(255,165,0,0.1)_50%,transparent_100%)] opacity-35 animate-spin" style={{ animationDuration: '8s' }} />}
+    <div ref={outerWrapperRef} className="flex-grow w-full relative bg-[#010103] flex items-center justify-center overflow-hidden" onMouseMove={handleMouseMove} onMouseDown={handleMouseDown} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}>
+      <Starfield count={300} isFixed velocity={starVelocity} />
+      
+      <div 
+        ref={mapContainerRef} 
+        className={`absolute inset-0 flex items-center justify-center pointer-events-none ${mapCursorClass}`} 
+        style={{ 
+          transform: `scale(${camZoom}) translate(${camOffset.x}px, ${camOffset.y}px)`, 
+          transition: isDragging ? 'none' : 'transform 100ms linear' 
+        }}
+      >
+        <div className="relative w-full h-full flex items-center justify-center pointer-events-none">
+            {/* SUN SYSTEM */}
+            <div className="absolute flex items-center justify-center pointer-events-none sun-pivot" style={{ left: '50%', top: '50%', width: 0, height: 0 }}>
+              <div className={`absolute rounded-full transition-all z-[30]`} 
+                   style={{ 
+                     width: SUN_OBJECT.size * 25 + 'px', height: SUN_OBJECT.size * 25 + 'px', 
+                     backgroundColor: isDelta ? '#000' : currentSunColor, 
+                     boxShadow: isDelta ? `0 0 120px rgba(255,140,0,0.3), 0 0 50px rgba(96,165,250,0.15), inset 0 0 80px rgba(255,255,255,0.08)` : `0 0 180px ${currentSunColor}, 0 0 60px white, 0 0 300px ${currentSunColor}44`,
+                     transform: 'translate(-50%, -50%)', top: 0, left: 0
+                   }}>
+                {isDelta && <div className="absolute w-[350%] h-[60%] bg-[radial-gradient(ellipse_at_center,rgba(255,165,0,0.25)_0%,transparent_70%)] blur-3xl animate-spin-slow opacity-90" style={{ animationDuration: '18s', left: '-125%', top: '20%' }} />}
                 <div className="w-full h-full rounded-full animate-pulse bg-[radial-gradient(circle_at_30%_30%,rgba(255,255,255,0.7)_0%,transparent_70%)] opacity-20" />
               </div>
+              {selectedEntityId === 'sun' && !isAnyZoomingActive && (
+                <div className="absolute border-dashed border-emerald-400 rounded-full z-[25] animate-rotate-dashed" 
+                     style={{ 
+                       width: (SUN_OBJECT.size * 25 + reticleOffset) + 'px', height: (SUN_OBJECT.size * 25 + reticleOffset) + 'px', 
+                       borderWidth: reticleThickness + 'px', top: 0, left: 0
+                     }} />
+              )}
             </div>
 
+            {/* COMET GAMA */}
+            {isGama && (
+              <div className="absolute z-30 pointer-events-none comet-pivot" style={{ left: '50%', top: '50%', transform: `translate(${cometVisuals.x}px, ${cometVisuals.y}px)`, width: 0, height: 0 }}>
+                <div className="absolute pointer-events-none" style={{ left: 0, top: 0, transform: `translate(-50%, -50%) rotate(${cometVisuals.tailAngle}deg)`, zIndex: 20, opacity: 1 - (cometVisuals.proximityFactor * 0.45) }}>
+                  <div className="absolute inset-[-18px] bg-[radial-gradient(circle,rgba(250,204,21,0.85)_0%,rgba(250,204,21,0.3)_60%,transparent_100%)] rounded-full blur-md animate-pulse" />
+                  {cometVisuals.tailLen > 2 && (
+                    <div className="absolute origin-left" style={{ left: '4px', top: 0, width: cometVisuals.tailLen * 4.6 + 'px', height: '36px', background: `linear-gradient(to right, rgba(250,204,21, ${0.94 - cometVisuals.proximityFactor * 0.4}) 0%, rgba(250,204,21, ${0.48 - cometVisuals.proximityFactor * 0.4}) 45%, transparent 100%)`, transform: `translateY(-50%)`, clipPath: 'polygon(0 0, 0 100%, 100% 50%)', filter: `blur(${7 + cometVisuals.proximityFactor * 10}px)`, opacity: (0.8 + Math.sin(localTime * 8) * 0.1) * (1 - Math.pow(cometVisuals.proximityFactor, 2)), mixBlendMode: 'screen' }} />
+                  )}
+                </div>
+                <div className={`absolute rounded-full relative z-[30]`} 
+                     style={{ 
+                       width: '32px', height: '32px',
+                       backgroundColor: '#fffbeb', boxShadow: '0 0 35px #facc15, 0 0 15px white, inset 0 0 10px rgba(255,255,255,0.9)', 
+                       transform: 'translate(-50%, -50%)', top: 0, left: 0 
+                     }}>
+                  <div className="absolute inset-[-4px] border border-yellow-100/40 rounded-full animate-pulse" />
+                </div>
+                {selectedEntityId === 'comet_gama' && !isAnyZoomingActive && (
+                  <div className="absolute border-dashed border-yellow-400 rounded-full z-[40] animate-rotate-dashed" 
+                       style={{ 
+                         width: (32 + reticleOffset) + 'px', height: (32 + reticleOffset) + 'px', 
+                         borderWidth: reticleThickness + 'px', top: 0, left: 0
+                       }} />
+                )}
+              </div>
+            )}
+
+            {/* PLANETS */}
             {planets.map((p: any) => {
               const { x, y } = getPlanetOrbitData(p);
               const offsets = planetOffsets[p.id] || { spinSpeed: 0 };
-              const selfRotation = localTime * offsets.spinSpeed * 20;
-              const visualSize = p.size * 25;
+              const visualDiameter = p.size * 25;
               const isSelected = selectedEntityId === p.id;
+              const isHovered = hoveredEntityId === p.id;
               return (
                 <React.Fragment key={p.id}>
-                    <div className="absolute border border-white/5 rounded-full pointer-events-none" style={{ width: p.orbitRadius * 12 + 'px', height: p.orbitRadius * 12 + 'px' }} />
-                    <div className="absolute z-20 pointer-events-none planet-container" style={{ transform: `translate(${x}px, ${y}px) translate(-50%, -50%)` }}>
-                      {isSelected && (
-                        <div 
-                          className="absolute border-dashed border-emerald-400 rounded-full" 
-                          style={{ 
-                            width: (visualSize + reticleOffset) + 'px', 
-                            height: (visualSize + reticleOffset) + 'px', 
-                            borderWidth: reticleThickness + 'px',
-                            top: '50%', 
-                            left: '50%', 
-                            transform: `translate(-50%, -50%) rotate(${localTime * 10}deg)`, 
-                            zIndex: 20 
-                          }} 
-                        />
-                      )}
-                      {p.moons && p.moons.map((m: any, idx: number) => {
-                        const baseMoonSpeed = 4.0;
-                        let speedMultiplier = 1.0;
-                        if (idx === 0) speedMultiplier = 0.5;
-                        else if (idx === 1) speedMultiplier = 0.2;
-                        else if (idx === 2) speedMultiplier = 0.0;
-                        const moonAngle = localTime * baseMoonSpeed * speedMultiplier * (m.orbitDirection || 1) + (m.angle * (Math.PI / 180));
+                    <div className="absolute border border-white/5 rounded-full pointer-events-none" style={{ width: p.orbitRadius * 12 + 'px', height: p.orbitRadius * 12 + 'px', left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }} />
+                    <div className="absolute z-20 pointer-events-none planet-pivot" style={{ left: '50%', top: '50%', transform: `translate(${x}px, ${y}px)`, width: 0, height: 0 }}>
+                      {p.moons && p.moons.map((m: any) => {
+                        const moonRotationalSpeed = 15 / Math.sqrt(m.distance || 10);
+                        const moonAngle = localTime * moonRotationalSpeed * (m.orbitDirection || 1) + (m.angle * (Math.PI / 180));
                         const mx = Math.cos(moonAngle) * m.distance;
                         const my = Math.sin(moonAngle) * m.distance;
-                        const moonVisualSize = m.size * 25;
                         return (
                           <React.Fragment key={m.id}>
-                            <div className="absolute border border-white/5 rounded-full" style={{ width: m.distance * 2 + 'px', height: m.distance * 2 + 'px', top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }} />
-                            <div className="absolute rounded-full border border-black/30" style={{ width: moonVisualSize + 'px', height: moonVisualSize + 'px', backgroundColor: m.color || '#94a3b8', left: '50%', top: '50%', transform: `translate(-50%, -50%) translate(${mx}px, ${my}px)`, boxShadow: 'inset -2px -2px 5px rgba(0,0,0,0.5)' }} />
+                            <div className="absolute border border-white/5 rounded-full" style={{ width: m.distance * 2 + 'px', height: m.distance * 2 + 'px', transform: 'translate(-50%, -50%)' }} />
+                            <div className="absolute rounded-full border border-black/30 shadow-[inset_-2px_-2px_5px_rgba(0,0,0,0.5),0_0_10px_rgba(255,255,255,0.5)]" 
+                                 style={{ width: m.size * 25 + 'px', height: m.size * 25 + 'px', backgroundColor: m.color || '#94a3b8', transform: `translate(-50%, -50%) translate(${mx}px, ${my}px)`, top: 0, left: 0 }} />
                           </React.Fragment>
                         );
                       })}
-                      <div onClick={(e) => { e.stopPropagation(); selectEntity(p.id); }} className={`clickable-body relative rounded-full cursor-pointer transition-all border-2 border-transparent overflow-hidden pointer-events-auto ${isSelected ? 'cursor-grab' : 'hover:border-white/40'}`} style={{ width: visualSize + 'px', height: visualSize + 'px', backgroundColor: p.color, boxShadow: isSelected ? '0 0 40px rgba(16, 185, 129, 0.4)' : '0 0 15px rgba(0,0,0,0.6)' }}>
-                          <div className="absolute inset-0 opacity-40" style={{ background: 'repeating-linear-gradient(45deg, rgba(0,0,0,0.15), rgba(0,0,0,0.15) 10px, rgba(255,255,255,0.08) 10px, rgba(255,255,255,0.08) 20px)', transform: `rotate(${selfRotation}deg)` }} />
+                      
+                      <div className={`absolute rounded-full border-2 overflow-hidden z-[30] ${isSelected ? 'border-emerald-500/30' : (isHovered ? 'border-white/60 scale-105' : 'border-transparent')}`} 
+                           style={{ 
+                             width: visualDiameter + 'px', height: visualDiameter + 'px', 
+                             backgroundColor: p.color, boxShadow: isSelected ? '0 0 40px rgba(16, 185, 129, 0.4)' : '0 0 15px rgba(0,0,0,0.6)', 
+                             transform: 'translate(-50%, -50%)', top: 0, left: 0, transition: 'transform 0.2s ease-out'
+                           }}>
+                          <div className="absolute inset-0 opacity-40" style={{ background: 'repeating-linear-gradient(45deg, rgba(0,0,0,0.15), rgba(0,0,0,0.15) 10px, rgba(255,255,255,0.08) 10px, rgba(255,255,255,0.08) 20px)', transform: `rotate(${localTime * offsets.spinSpeed * 20}deg)` }} />
                           <div className="absolute inset-0 shadow-[inset_-6px_-6px_20px_rgba(0,0,0,0.6),inset_6px_6px_15px_rgba(255,255,255,0.25)]" />
                           {p.hasRings && <div className="absolute inset-[-65%] border-4 border-zinc-400/20 rounded-full rotate-[35deg] shadow-[0_0_20px_rgba(255,255,255,0.05)]" />}
                       </div>
+
+                      {isSelected && !isAnyZoomingActive && (
+                        <div className="absolute border-dashed border-emerald-400 rounded-full z-[35] animate-rotate-dashed" 
+                             style={{ 
+                               width: (visualDiameter + reticleOffset) + 'px', height: (visualDiameter + reticleOffset) + 'px', 
+                               borderWidth: reticleThickness + 'px', top: 0, left: 0
+                             }} />
+                      )}
                     </div>
                 </React.Fragment>
               );
             })}
         </div>
       </div>
-      <div className="absolute left-6 top-1/2 -translate-y-1/2 h-[60vh] w-6 flex flex-col items-center z-50"><div className="w-[1px] h-full bg-white/10" /><input type="range" orientation="vertical" min="0" max="100" value={vScrollPos} onChange={handleVScroll} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" style={{ appearance: 'slider-vertical' as any }} /><div className="absolute w-2.5 h-12 bg-white/5 border border-white/20 rounded-full pointer-events-none backdrop-blur-xl shadow-lg" style={{ top: `${vScrollPos}%`, transform: 'translateY(-50%)' }} /></div>
-      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-[60vw] h-6 flex flex-row items-center z-50"><div className="h-[1px] w-full bg-white/10" /><input type="range" min="0" max="100" value={hScrollPos} onChange={handleHScroll} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" /><div className="absolute h-2.5 w-12 bg-white/5 border border-white/20 rounded-full pointer-events-none backdrop-blur-xl shadow-lg" style={{ left: `${hScrollPos}%`, transform: 'translateX(-50%)' }} /></div>
-      <div className="absolute top-6 left-14 flex flex-col gap-3 z-50"><div className="flex gap-2"><button onClick={() => setCamZoom(prev => Math.min(prev + 0.2, 4))} className="w-11 h-11 bg-white/5 backdrop-blur-xl border border-white/10 retro-font text-xs hover:bg-white/10 hover:border-white/30 rounded-lg flex items-center justify-center transition-all shadow-xl">+</button><button onClick={() => setCamZoom(prev => Math.max(prev - 0.2, 0.005))} className="w-11 h-11 bg-white/5 backdrop-blur-xl border border-white/10 retro-font text-xs hover:bg-white/10 hover:border-white/30 rounded-lg flex items-center justify-center transition-all shadow-xl">-</button><button onClick={focusOnSelected} disabled={!selectedEntity} className={`w-11 h-11 bg-white/5 backdrop-blur-xl border border-white/10 flex items-center justify-center rounded-lg transition-all shadow-xl ${!selectedEntity ? 'opacity-20' : 'hover:bg-white/10 hover:border-white/30 text-emerald-400'}`} title="Focus Matrix"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button><button onClick={resetView} className="w-11 h-11 bg-white/5 backdrop-blur-xl border border-white/10 flex items-center justify-center rounded-lg hover:bg-white/10 hover:border-white/30 text-zinc-400 transition-all shadow-xl" title="Outer Scan"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="12" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></button></div></div>
-      <div className="absolute bottom-12 left-12 right-12 flex justify-between items-end pointer-events-none z-50"><div className="bg-zinc-950/40 backdrop-blur-2xl border border-white/10 p-5 rounded-xl flex items-center gap-8 pointer-events-auto shadow-2xl"><div className="flex items-center gap-5 border-r border-white/10 pr-8"><div className="w-20 h-20 bg-emerald-500/5 border border-emerald-500/20 rounded-xl flex items-center justify-center text-5xl shadow-inner animate-pulse-slow">{pilotAvatar}</div><div><div className="retro-font text-[7px] text-zinc-500 uppercase tracking-[0.3em] mb-1">Sector Commander</div><div className="retro-font text-sm text-emerald-400 uppercase tracking-wide">{pilotName}</div></div></div><div className="flex items-center gap-5"><div className="w-20 h-20 bg-white/5 border border-white/10 rounded-xl p-3"><ShipIcon shape={SHIPS.find(s=>s.id === selectedShipId)?.shape || 'arrow'} color={shipColors[selectedShipId] || '#fff'} /></div><div className="flex flex-col gap-3"><button onClick={onOpenWarp} className="px-6 py-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 retro-font text-[9px] uppercase rounded-lg transition-all backdrop-blur-md">Jump</button>
-      <button onClick={onReturnHome} className="px-6 py-2 bg-white/5 hover:bg-white/10 border border-white/10 retro-font text-[9px] uppercase rounded-lg transition-all backdrop-blur-md">Home</button></div></div></div><div className="w-[280px] md:w-80 bg-zinc-950/40 border border-white/10 p-6 flex flex-col gap-4 shadow-2xl backdrop-blur-2xl rounded-xl pointer-events-auto"><div className="flex justify-between items-center border-b border-white/10 pb-3"><span className="retro-font text-[8px] md:text-[9px] text-zinc-500 uppercase tracking-[0.3em]">Tactical Feed</span><button onClick={() => { setIsScanning(true); setTimeout(() => setIsScanning(false), 1500); audioService.playSfx('transition'); }} className={`text-emerald-400 text-[8px] md:text-[9px] retro-font uppercase transition-all ${isScanning ? 'opacity-30' : 'animate-pulse'}`}>{isScanning ? 'Streaming...' : 'Sync Feed'}</button></div><div className="flex-grow overflow-y-auto max-h-32 md:max-h-48 space-y-1.5 custom-scrollbar pr-3"><div onClick={() => selectEntity('sun')} className={`p-2 font-mono text-[10px] md:text-[11px] cursor-pointer transition-all flex justify-between uppercase rounded-lg border ${selectedEntityId === 'sun' ? 'bg-white/10 text-orange-400 border-white/10' : 'text-zinc-500 border-transparent hover:text-zinc-200'}`}><span>{SUN_OBJECT.name}</span><span className="text-orange-900/50 text-[8px] tracking-widest">[NUCLEUS]</span></div>{planets.map((p: any) => (<div key={p.id} onClick={() => selectEntity(p.id)} className={`p-2 font-mono text-[10px] md:text-[11px] cursor-pointer transition-all flex justify-between uppercase rounded-lg border ${selectedEntityId === p.id ? 'bg-white/10 text-emerald-400 border-white/10' : 'text-zinc-500 border-transparent hover:text-zinc-200'}`}><span>{p.name}</span><span className={`text-[8px] opacity-70 ${p.status === 'occupied' ? 'text-red-400' : (p.status === 'friendly' ? 'text-emerald-400' : 'text-blue-400')}`}>[{p.status}]</span></div>))}</div>{selectedEntity && (<div className="animate-in fade-in slide-in-from-bottom duration-500 space-y-4 pt-4 border-t border-white/10"><div className={`retro-font text-[9px] md:text-xs uppercase tracking-tight ${selectedEntity.id === 'sun' ? 'text-orange-400' : 'text-emerald-400'}`}>{selectedEntity.name}</div><p className="text-[8px] md:text-[10px] font-mono text-zinc-400 uppercase leading-relaxed h-12 md:h-20 overflow-y-auto custom-scrollbar pr-1">{selectedEntity.description}</p>{selectedEntity.id !== 'sun' && (<button onClick={() => onArrival(selectedEntity)} className={`w-full py-4 retro-font text-[9px] border rounded-lg uppercase transition-all shadow-xl backdrop-blur-md ${selectedEntity.status === 'friendly' ? 'bg-blue-500/5 hover:bg-blue-500/15 border-blue-500/40 text-blue-300' : 'bg-emerald-500/5 hover:bg-emerald-500/15 border-emerald-500/40 text-emerald-300'}`}>{selectedEntity.status === 'friendly' ? 'Initiate Landing' : 'Lock Target'}</button>)}</div>)}</div></div>
+
+      <div className="absolute left-6 top-1/2 -translate-y-1/2 h-[60vh] w-6 flex flex-col items-center z-50">
+        <div className="w-[1px] h-full bg-white/10" />
+        <input type="range" min="0" max="100" step="0.1" value={vScrollPos} onChange={handleVScroll} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" style={{ transform: 'rotate(90deg)', width: '60vh' }} />
+        <div className="absolute w-2.5 h-12 bg-white/5 border border-white/20 rounded-full pointer-events-none backdrop-blur-xl shadow-lg" style={{ top: `${vScrollPos}%`, transform: 'translateY(-50%)' }} />
+      </div>
+
+      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-[60vw] h-6 flex flex-row items-center z-50">
+        <div className="h-[1px] w-full bg-white/10" />
+        <input type="range" min="0" max="100" step="0.1" value={hScrollPos} onChange={handleHScroll} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+        <div className="absolute h-2.5 w-12 bg-white/5 border border-white/20 rounded-full pointer-events-none backdrop-blur-xl shadow-lg" style={{ left: `${hScrollPos}%`, transform: 'translateX(-50%)' }} />
+      </div>
+
+      <div className="absolute top-6 left-14 flex flex-col gap-3 z-50">
+        <div className="flex gap-2">
+          <button onClick={() => { if (!isCalculating) setCamZoom(prev => Math.min(prev * 1.25, 4)); }} className="w-11 h-11 bg-white/5 backdrop-blur-xl border border-white/10 retro-font text-xs hover:bg-white/10 hover:border-white/30 rounded-lg flex items-center justify-center transition-all shadow-xl">+</button>
+          <button onClick={() => { if (!isCalculating) setCamZoom(prev => Math.max(prev / 1.25, 0.005)); }} className="w-11 h-11 bg-white/5 backdrop-blur-xl border border-white/10 retro-font text-xs hover:bg-white/10 hover:border-white/30 rounded-lg flex items-center justify-center transition-all shadow-xl">-</button>
+          <button onClick={focusOnSelected} disabled={!selectedEntity || isCalculating} className={`w-11 h-11 bg-white/5 backdrop-blur-xl border border-white/10 flex items-center justify-center rounded-lg transition-all shadow-xl ${(!selectedEntity || isCalculating) ? 'opacity-20' : 'hover:bg-white/10 hover:border-white/30 text-emerald-400'}`} title="Focus Matrix"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+          <button onClick={resetView} disabled={isCalculating} className={`w-11 h-11 bg-white/5 backdrop-blur-xl border border-white/10 flex items-center justify-center rounded-lg transition-all shadow-xl ${isCalculating ? 'opacity-20' : 'hover:bg-white/10 hover:border-white/30 text-zinc-400'}`} title="Outer Scan"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="12" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></button>
+        </div>
+      </div>
+
+      <div className="absolute bottom-12 left-12 right-12 flex justify-between items-end pointer-events-none z-50 overflow-hidden py-4">
+        <div className="relative pointer-events-auto h-32 flex items-center ui-panel">
+          <div className={`h-full bg-zinc-950/40 backdrop-blur-2xl border border-white/10 p-5 rounded-xl flex items-center gap-8 shadow-2xl transition-transform duration-500 ease-in-out ${isStatusMinimized ? '-translate-x-[calc(100%+12px)]' : ''}`}>
+            <button onClick={() => { setIsStatusMinimized(true); audioService.playSfx('click'); }} className="w-10 h-10 flex items-center justify-center hover:scale-110 transition-transform group" title="Minimize Fleet Status"><svg viewBox="0 0 100 100" className="w-6 h-6 fill-zinc-600 group-hover:fill-emerald-400 transition-colors drop-shadow-[0_0_5px_rgba(16,185,129,0.2)]"><path d="M70 10 L20 50 L70 90 Z" /></svg></button>
+            <div className="flex items-center gap-5 border-r border-white/10 pr-8 h-full">
+              <div className="w-20 h-20 bg-emerald-500/5 border border-emerald-500/20 rounded-xl flex items-center justify-center text-5xl shadow-inner animate-pulse-slow">{pilotAvatar}</div>
+              <div><div className="retro-font text-[7px] text-zinc-500 uppercase tracking-[0.3em] mb-1">Sector Commander</div><div className="retro-font text-sm text-emerald-400 uppercase tracking-wide">{pilotName}</div></div>
+            </div>
+            <div className="flex items-center gap-5 h-full">
+              <div className="w-20 h-20 bg-white/5 border border-white/10 rounded-xl p-3"><ShipIcon shape={SHIPS.find(s=>s.id === selectedShipId)?.shape || 'arrow'} color={shipColors[selectedShipId] || '#fff'} /></div>
+              <div className="flex flex-col gap-3">
+                <button onClick={onOpenWarp} className="px-6 py-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 retro-font text-[9px] uppercase rounded-lg transition-all backdrop-blur-md">Jump</button>
+                <button onClick={onReturnHome} className="px-6 py-2 bg-white/5 hover:bg-white/10 border border-white/10 retro-font text-[9px] uppercase rounded-lg transition-all backdrop-blur-md">Home</button>
+              </div>
+            </div>
+          </div>
+          {isStatusMinimized && (
+            <button onClick={() => { setIsStatusMinimized(false); audioService.playSfx('click'); }} className="absolute bottom-0 w-12 h-32 bg-emerald-500/10 backdrop-blur-xl border border-emerald-500/30 rounded-r-lg flex flex-col items-center hover:bg-emerald-500/20 transition-all pointer-events-auto shadow-xl overflow-hidden" style={{ left: '-12px' }}>
+              <div className="h-12 w-full flex items-center justify-center shrink-0 border-b border-emerald-500/10"><svg viewBox="0 0 100 100" className="w-4 h-4 fill-emerald-400"><path d="M30 10 L80 50 L30 90 Z" /></svg></div>
+              <div className="flex-grow w-full flex items-center justify-center"><div className="rotate-90 retro-font text-[9px] text-emerald-400 whitespace-nowrap tracking-[0.3em] uppercase">Status</div></div>
+            </button>
+          )}
+        </div>
+        
+        <div className="relative pointer-events-auto w-80 ui-panel">
+          <div className={`w-full bg-zinc-950/40 border border-white/10 p-6 flex flex-col gap-4 shadow-2xl backdrop-blur-2xl rounded-xl transition-transform duration-500 ease-in-out ${isTacticalMinimized ? 'translate-y-[calc(100%+48px)]' : ''}`}>
+            <div className="flex justify-between items-center border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2">
+                <button onClick={() => { setIsTacticalMinimized(true); audioService.playSfx('click'); }} className="w-8 h-8 flex items-center justify-center hover:scale-110 transition-transform group" title="Minimize Tactical Feed"><svg viewBox="0 0 100 100" className="w-5 h-5 fill-zinc-600 group-hover:fill-blue-400 transition-colors drop-shadow-[0_0_5px_rgba(59,130,246,0.2)]"><path d="M10 30 L50 80 L90 30 Z" /></svg></button>
+                <span className="retro-font text-[8px] md:text-[9px] text-zinc-500 uppercase tracking-[0.3em]">Tactical</span>
+              </div>
+              <button onClick={() => { if (!isCalculating) { setIsScanning(true); setTimeout(() => setIsScanning(false), 1500); audioService.playSfx('transition'); } }} className={`text-emerald-400 text-[8px] md:text-[9px] retro-font uppercase transition-all ${isScanning || isCalculating ? 'opacity-30' : 'animate-pulse'}`}>{isScanning ? 'Streaming...' : 'Sync Feed'}</button>
+            </div>
+            <div className="flex-grow overflow-y-auto max-h-32 md:max-h-48 space-y-1.5 custom-scrollbar pr-3">
+              <div onClick={() => selectEntity('sun')} className={`p-2 font-mono text-[10px] md:text-[11px] cursor-pointer transition-all flex justify-between uppercase rounded-lg border ${selectedEntityId === 'sun' ? 'bg-white/10 text-orange-400 border-white/10' : 'text-zinc-500 border-transparent hover:text-zinc-200'}`}>
+                <span>{SUN_OBJECT.name}</span><span className="text-orange-900/50 text-[8px] tracking-widest">[NUCLEUS]</span>
+              </div>
+              {isGama && (
+                <div onClick={() => { if (cometVisuals.isSelectable) selectEntity('comet_gama'); }} className={`p-2 font-mono text-[10px] md:text-[11px] cursor-pointer transition-all flex justify-between uppercase rounded-lg border ${selectedEntityId === 'comet_gama' ? 'bg-white/10 text-yellow-400 border-white/10' : (cometVisuals.isSelectable ? 'text-zinc-300 border-transparent hover:text-white' : 'text-zinc-700 border-transparent cursor-not-allowed')}`}>
+                  <span>{COMET_OBJECT.name}</span><span className="text-[8px] tracking-widest">{cometVisuals.isSelectable ? '[LOCKED]' : '[OUTSIDE RANGE]'}</span>
+                </div>
+              )}
+              {planets.map((p: any) => (
+                <div key={p.id} onClick={() => selectEntity(p.id)} className={`p-2 font-mono text-[10px] md:text-[11px] cursor-pointer transition-all flex justify-between uppercase rounded-lg border ${selectedEntityId === p.id ? 'bg-white/10 text-emerald-400 border-white/10' : 'text-zinc-500 border-transparent hover:text-zinc-200'}`}>
+                  <span>{p.name}</span><span className={`text-[8px] opacity-70 ${p.status === 'occupied' ? 'text-red-400' : (p.status === 'friendly' ? 'text-emerald-400' : 'text-blue-400')}`}>[{p.status}]</span>
+                </div>
+              ))}
+            </div>
+            {selectedEntity && (
+              <div className="animate-in fade-in slide-in-from-bottom duration-500 space-y-4 pt-4 border-t border-white/10">
+                <div className={`retro-font text-[9px] md:text-xs uppercase tracking-tight ${selectedEntity.id === 'sun' ? 'text-orange-400' : (selectedEntity.id === 'comet_gama' ? 'text-yellow-400' : 'text-emerald-400')}`}>{selectedEntity.name}</div>
+                <p className="text-[8px] md:text-[10px] font-mono text-zinc-400 uppercase leading-relaxed h-12 md:h-20 overflow-y-auto custom-scrollbar pr-1">{selectedEntity.description}</p>
+                {selectedEntity.id !== 'sun' && (
+                  <button onClick={() => onArrival(selectedEntity)} disabled={isCalculating} className={`w-full py-4 retro-font text-[9px] border rounded-lg uppercase transition-all shadow-xl backdrop-blur-md ${isCalculating ? 'opacity-50 cursor-not-allowed' : (selectedEntity.status === 'friendly' ? 'bg-blue-500/5 hover:bg-blue-500/15 border-blue-500/40 text-blue-300' : (selectedEntity.id === 'comet_gama' ? 'bg-yellow-500/5 hover:bg-yellow-500/15 border-yellow-500/40 text-yellow-300' : 'bg-emerald-500/5 hover:bg-emerald-500/15 border-emerald-500/40 text-emerald-300'))}`}>{selectedEntity.status === 'friendly' ? 'Initiate Landing' : 'Lock Target'}</button>
+                )}
+              </div>
+            )}
+          </div>
+          {isTacticalMinimized && (
+            <button onClick={() => { setIsTacticalMinimized(false); audioService.playSfx('click'); }} className="absolute right-0 bottom-[-12px] w-80 h-12 bg-blue-500/10 backdrop-blur-xl border border-blue-500/30 rounded-t-lg flex flex-row items-center hover:bg-blue-500/20 transition-all pointer-events-auto shadow-xl border-b-0 overflow-hidden">
+              <div className="w-12 h-full flex items-center justify-center shrink-0 border-r border-blue-500/10"><svg viewBox="0 0 100 100" className="w-4 h-4 fill-blue-400"><path d="M10 70 L50 20 L90 70 Z" /></svg></div>
+              <div className="flex-grow h-full flex items-center justify-start pl-4"><div className="retro-font text-[9px] text-blue-400 tracking-[0.4em] uppercase">Tactical</div></div>
+            </button>
+          )}
+        </div>
+      </div>
+      
       {isScanning && <div className="absolute inset-0 z-40 pointer-events-none flex items-center justify-center"><div className="w-full h-[1px] bg-emerald-500/20 shadow-[0_0_30px_emerald] animate-scan-line" /></div>}
+      
       <style>{` 
         @keyframes scan-line { 0% { transform: translateY(-50vh); } 100% { transform: translateY(50vh); } } 
         .animate-scan-line { animation: scan-line 1.5s linear; } 
-        input[type=range] { writing-mode: bt-lr; }
+        input[type=range] { writing-mode: bt-lr; -webkit-appearance: none; background: transparent; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 48px; width: 24px; cursor: pointer; }
         .animate-spin-slow { animation: spin 18s linear infinite; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .animate-pulse-slow { animation: pulse-slow 3s ease-in-out infinite; }
         @keyframes pulse-slow { 0%, 100% { opacity: 0.8; } 50% { opacity: 0.4; } }
-        @keyframes pulse-fast { 0%, 100% { transform: scale(1.0); opacity: 0.3; } 50% { transform: scale(1.1); opacity: 0.6; } }
-        .animate-pulse-fast { animation: pulse-fast 0.4s ease-in-out infinite; }
-        @keyframes distort { 0%, 100% { border-radius: 50%; transform: scaleX(1); } 50% { border-radius: 40% 60% 50% 50%; transform: scaleX(1.3); } }
-        .animate-distort { animation: distort 0.6s ease-in-out infinite; }
       `}</style>
     </div>
   );
