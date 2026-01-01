@@ -1,6 +1,5 @@
-
-// CHECKPOINT: Defender V5.60
-// VERSION: V5.60 - Optimized Maps & Flickering Stars
+// CHECKPOINT: Defender V20.0
+// VERSION: V20.0 - Advanced Lunar Mechanics
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { GameState, Planet, Moon, MissionType, ShipConfig, Weapon, Shield, GameSettings, EquippedWeapon, WeaponType, QuadrantType, ShipFitting } from './types';
 import { INITIAL_CREDITS, SHIPS, WEAPONS, SHIELDS, PLANETS } from './constants';
@@ -9,1359 +8,427 @@ import LandingScene from './components/LandingScene';
 import { getMissionBriefing } from './services/geminiService';
 import { audioService } from './services/audioService';
 
-const SAVE_KEY = 'raptor_save_v5_16';
+const SAVE_KEY = 'galactic_defender_v20_0';
 
-const ShipIcon = ({ shape, isActive, color, weaponCount = 0, shield = null, canLayMines = false }: any) => {
+const ShipIcon = ({ shape, color = 'white', className = '', showJets = false }: { shape: string, color?: string, className?: string, showJets?: boolean }) => {
   return (
-    <svg viewBox="0 0 100 100" className="w-full h-full">
-      <defs>
-        <filter id="glow">
-          <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
-          <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
-        </filter>
-      </defs>
-      {shield && (
-        <circle cx="50" cy="50" r="45" fill="none" stroke={isActive ? "#60a5fa" : "#3f3f46"} strokeWidth="1" strokeDasharray="4 4" className="animate-spin-slow opacity-40" />
+    <div className={`relative ${className}`}>
+      <svg viewBox="0 0 100 100" className="w-full h-full" style={{ filter: `drop-shadow(0 0 5px ${color})` }}>
+        {shape === 'arrow' && <path d="M50 10 L10 90 L50 70 L90 90 Z" fill={color} />}
+        {shape === 'stealth' && <path d="M50 5 L10 95 L50 80 L90 95 Z" fill={color} stroke="white" strokeWidth="2" />}
+        {shape === 'wing' && <path d="M50 20 L0 80 L50 60 L100 80 Z" fill={color} />}
+        {shape === 'block' && <rect x="20" y="20" width="60" height="60" rx="4" fill={color} />}
+        {shape === 'mine-layer' && <path d="M50 10 L10 40 L10 80 L50 95 L90 80 L90 40 Z" fill={color} />}
+      </svg>
+      {showJets && (
+        <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 flex gap-1 z-0">
+          <div className="w-1.5 h-6 bg-blue-400 rounded-full animate-pulse opacity-80 blur-[1px]" />
+          <div className="w-1 h-8 bg-white/80 rounded-full animate-bounce opacity-90 blur-[1px]" />
+          <div className="w-1.5 h-6 bg-blue-400 rounded-full animate-pulse opacity-80 blur-[1px]" />
+        </div>
       )}
-      <g transform="translate(50, 50) scale(0.8)" filter={isActive ? "url(#glow)" : ""}>
-        <path
-          d={
-            shape === 'arrow' ? "M0,-40 L35,40 L0,25 L-35,40 Z" :
-            shape === 'stealth' ? "M0,-45 L25,-10 L45,35 L0,20 L-45,35 L-25,-10 Z" :
-            shape === 'block' ? "M-30,-30 L30,-30 L30,30 L-30,30 Z" :
-            shape === 'mine-layer' ? "M-25,-35 L25,-35 L25,35 L-25,35 Z M-35,-10 L-25,-10 L-25,20 L-35,20 Z M25,-10 L35,-10 L35,20 L25,20 Z" :
-            "M0,-35 C40,-35 50,15 45,40 L0,20 L-45,40 C-50,15 -40,-35 0,-35" // wing
-          }
-          fill={color}
-          stroke="rgba(0,0,0,0.3)"
-          strokeWidth="2"
-        />
-        <ellipse cx="0" cy={shape === 'block' ? "0" : "-5"} rx="6" ry="10" fill="rgba(0,0,0,0.4)" />
-        {weaponCount > 0 && (
-          <g fill="#71717a">
-            <rect x="-42" y="10" width="4" height="15" />
-            <rect x="38" y="10" width="4" height="15" />
-          </g>
-        )}
-        {canLayMines && <circle cx="0" cy="30" r="5" fill="#f59e0b" />}
-      </g>
-    </svg>
+    </div>
   );
 };
 
-const HelpModal = ({ onClose }: { onClose: () => void }) => (
-  <div className="fixed inset-0 z-[300] bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm">
-    <div className="bg-zinc-900 border-2 border-zinc-700 w-full max-w-2xl p-8 rounded-lg shadow-2xl space-y-6">
-      <h3 className="retro-font text-2xl text-emerald-400 border-b border-zinc-800 pb-4 uppercase tracking-widest text-left">Tactical Manual</h3>
-      <div className="grid grid-cols-2 gap-8 text-[11px] font-mono text-zinc-300 text-left">
-        <div className="space-y-4">
-          <p className="text-emerald-500 font-bold uppercase">Navigation</p>
-          <ul className="space-y-2 list-disc pl-4">
-            <li>WASD or Arrows: Move</li>
-            <li>Space: Primary Weapons</li>
-            <li>1, 2, 3: Weapon Groups</li>
-            <li>ESC: Pause Menu</li>
-          </ul>
-        </div>
-        <div className="space-y-4">
-          <p className="text-blue-500 font-bold uppercase">Combat Rules</p>
-          <ul className="space-y-2 list-disc pl-4">
-            <li>Shields regenerate when not hit</li>
-            <li>Laser/Cannon: Unlimited</li>
-            <li>Missiles/Mines: Buy Ammo</li>
-            <li>Pick up HP/Ammo drops</li>
-          </ul>
-        </div>
-      </div>
-      <button onClick={onClose} className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white retro-font text-xs uppercase tracking-widest transition-all">Close Manual</button>
-    </div>
-  </div>
-);
-
-const SettingsModal = ({ gameState, onUpdateGameState, onUpdateSettings, onClose }: any) => {
-  const resetGame = () => {
-    if (confirm("CRITICAL: ALL MISSION DATA WILL BE PURGED. RESET FLEET?")) {
-      localStorage.removeItem(SAVE_KEY);
-      window.location.reload();
-    }
-  };
+const Starfield = ({ count = 100, isFixed = true, scrollSpeed = 0 }: { count?: number, isFixed?: boolean, scrollSpeed?: number }) => {
+  const stars = useMemo(() => {
+    const colors = ['#ffffff', '#60a5fa', '#f87171', '#fbbf24', '#ffffff'];
+    return Array.from({ length: count }).map((_, i) => ({
+      id: i,
+      x: Math.random() * 100,
+      y: Math.random() * 100,
+      size: 1 + Math.random() * 2,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      delay: Math.random() * 5,
+      duration: 2 + Math.random() * 4,
+      flicker: Math.random() > 0.3
+    }));
+  }, [count]);
 
   return (
-    <div className="fixed inset-0 z-[300] bg-black/90 flex items-center justify-center p-4 backdrop-blur-md">
-      <div className="bg-zinc-900 border-2 border-zinc-700 w-full max-w-xl p-8 rounded shadow-2xl space-y-8 animate-in zoom-in-95 duration-200">
-        <h3 className="retro-font text-xl text-blue-400 uppercase tracking-widest border-b border-zinc-800 pb-4">Terminal Config</h3>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          <div className="space-y-6">
-             <div>
-                <label className="block text-[10px] font-mono text-zinc-500 uppercase mb-2">Pilot Name</label>
-                <input 
-                  type="text" 
-                  maxLength={12}
-                  value={gameState.pilotName} 
-                  onChange={(e) => onUpdateGameState({ pilotName: e.target.value.toUpperCase() })}
-                  className="w-full bg-black border border-zinc-700 text-emerald-400 p-3 retro-font text-[10px] outline-none focus:border-emerald-500"
-                />
-             </div>
-             <div>
-                <label className="block text-[10px] font-mono text-zinc-500 uppercase mb-3">Service Avatar</label>
-                <div className="grid grid-cols-4 gap-2">
-                  {['👨‍🚀', '👩‍🚀', '👾', '🤖', '🚀', '👽', '💀', '💂'].map(a => (
-                    <button 
-                      key={a} 
-                      onClick={() => onUpdateGameState({ pilotAvatar: a })}
-                      className={`w-10 h-10 flex items-center justify-center text-xl rounded border transition-all ${gameState.pilotAvatar === a ? 'bg-emerald-900/40 border-emerald-500' : 'bg-black border-zinc-800 hover:border-zinc-600'}`}
-                    >
-                      {a}
-                    </button>
-                  ))}
-                </div>
-             </div>
-          </div>
-
-          <div className="space-y-6">
-             <div className="space-y-4">
-                <div className="flex justify-between items-center p-3 bg-black/40 border border-zinc-800 rounded">
-                   <span className="text-[10px] font-mono text-zinc-300 uppercase">Autosave</span>
-                   <button 
-                    onClick={() => onUpdateSettings({ autosaveEnabled: !gameState.settings.autosaveEnabled })}
-                    className={`px-3 py-1 rounded text-[9px] retro-font transition-all ${gameState.settings.autosaveEnabled ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-500'}`}
-                   >
-                     {gameState.settings.autosaveEnabled ? 'ON' : 'OFF'}
-                   </button>
-                </div>
-                <div className="flex justify-between items-center p-3 bg-black/40 border border-zinc-800 rounded">
-                   <span className="text-[10px] font-mono text-zinc-300 uppercase">Audio</span>
-                   <button 
-                    onClick={() => onUpdateSettings({ musicEnabled: !gameState.settings.musicEnabled })}
-                    className={`px-3 py-1 rounded text-[9px] retro-font transition-all ${gameState.settings.musicEnabled ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-500'}`}
-                   >
-                     {gameState.settings.musicEnabled ? 'ACTIVE' : 'MUTED'}
-                   </button>
-                </div>
-             </div>
-             
-             <div className="pt-4 border-t border-zinc-800">
-                <button 
-                  onClick={resetGame}
-                  className="w-full py-4 bg-red-900/20 hover:bg-red-900/40 text-red-500 border border-red-900/50 retro-font text-[9px] uppercase tracking-widest transition-all"
-                >
-                  Purge Mission Data
-                </button>
-             </div>
-          </div>
-        </div>
-
-        <button onClick={onClose} className="w-full py-5 bg-blue-600 hover:bg-blue-500 text-white retro-font text-[10px] uppercase tracking-widest border-b-4 border-blue-900 shadow-xl transition-all">Synchronize Terminal</button>
-      </div>
+    <div className={`${isFixed ? 'fixed' : 'absolute'} inset-0 pointer-events-none overflow-hidden z-0`}>
+      {stars.map(s => (
+        <div
+          key={s.id}
+          className={`absolute rounded-full ${s.flicker ? 'animate-pulse' : ''} ${scrollSpeed > 0 ? 'animate-star-scroll' : ''}`}
+          style={{
+            left: `${s.x}%`,
+            top: `${s.y}%`,
+            width: `${s.size}px`,
+            height: `${s.size}px`,
+            backgroundColor: s.color,
+            boxShadow: `0 0 ${s.size * 2}px ${s.color}`,
+            animationDelay: `${s.delay}s`,
+            animationDuration: scrollSpeed > 0 ? `${15 / scrollSpeed}s` : `${s.duration}s`,
+            opacity: 0.8
+          }}
+        />
+      ))}
+      <style>{`
+        @keyframes star-scroll {
+          from { transform: translateY(-100vh); }
+          to { transform: translateY(100vh); }
+        }
+        .animate-star-scroll { animation: star-scroll linear infinite; }
+      `}</style>
     </div>
   );
 };
 
-const SystemMenuModal = ({ onResume, onReturnToCommand, onExitToTitle }: { onResume: () => void, onReturnToCommand: () => void, onExitToTitle: () => void }) => (
-  <div className="fixed inset-0 z-[500] bg-black/80 backdrop-blur-md flex items-center justify-center p-6">
-    <div className="bg-zinc-900 border-4 border-zinc-800 max-sm w-full p-8 shadow-[0_0_100px_rgba(0,0,0,1)] flex flex-col items-center space-y-10 animate-in zoom-in-90 duration-150">
-      <div className="text-center space-y-2">
-        <h3 className="retro-font text-xl text-emerald-500 uppercase tracking-tighter">System Intercept</h3>
-        <p className="text-[9px] font-mono text-zinc-500 uppercase tracking-widest animate-pulse">Awaiting Command Input...</p>
-      </div>
-      
-      <div className="w-full space-y-4">
-        <button 
-          onClick={onResume}
-          className="w-full py-4 bg-zinc-800 hover:bg-zinc-700 text-white border-b-4 border-zinc-950 retro-font text-[10px] uppercase tracking-widest transition-all"
-        >
-          Resume Operations
-        </button>
-        <button 
-          onClick={onReturnToCommand}
-          className="w-full py-4 bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 border border-blue-900/50 retro-font text-[9px] uppercase tracking-widest transition-all"
-        >
-          Return to Hangar
-        </button>
-        <button 
-          onClick={onExitToTitle}
-          className="w-full py-4 bg-red-900/20 hover:bg-red-900/40 text-red-500 border border-red-900/50 retro-font text-[9px] uppercase tracking-widest transition-all"
-        >
-          Save & Exit
-        </button>
-      </div>
+const WarpTransition = ({ onComplete }: { onComplete: () => void }) => {
+  useEffect(() => {
+    audioService.playSfx('transition');
+    const timer = setTimeout(onComplete, 4000);
+    return () => clearTimeout(timer);
+  }, [onComplete]);
 
-      <div className="pt-4 border-t border-zinc-800 w-full text-center">
-         <span className="text-[8px] font-mono text-zinc-600 uppercase">Sector Data Synchronization Active</span>
+  return (
+    <div className="fixed inset-0 z-[1000] bg-black overflow-hidden flex items-center justify-center">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(59,130,246,0.3)_0%,transparent_100%)]" />
+      <div className="warp-tunnel">
+        {Array.from({ length: 150 }).map((_, i) => (
+          <div key={i} className="warp-star" style={{
+            left: Math.random() * 100 + '%',
+            top: Math.random() * 100 + '%',
+            animationDelay: Math.random() * 2 + 's',
+            animationDuration: (0.3 + Math.random() * 1.2) + 's'
+          }} />
+        ))}
       </div>
+      <div className="relative z-10 animate-vibrate">
+        <div className="w-24 h-24 md:w-32 md:h-32 p-4 bg-blue-500/10 rounded-full border border-blue-400/30 shadow-[0_0_80px_rgba(59,130,246,0.4)] backdrop-blur-md">
+          <ShipIcon shape="stealth" color="#10b981" />
+        </div>
+      </div>
+      <div className="absolute bottom-10 md:bottom-20 px-6 text-center retro-font text-blue-400 text-[10px] md:text-sm animate-pulse tracking-widest uppercase">Warp Drive Active - Bending Space-Time</div>
     </div>
-  </div>
-);
+  );
+};
 
-const DEFAULT_SETTINGS: GameSettings = {
-  musicVolume: 0.3,
-  sfxVolume: 0.5,
-  musicEnabled: true,
-  sfxEnabled: true,
-  displayMode: 'windowed',
-  autosaveEnabled: true
+const LaunchSimulation = ({ onComplete }: { onComplete: () => void }) => {
+  useEffect(() => {
+    audioService.playSfx('transition');
+    const timer = setTimeout(onComplete, 5000);
+    return () => clearTimeout(timer);
+  }, [onComplete]);
+
+  return (
+    <div className="fixed inset-0 z-[1000] bg-[#020205] flex flex-col items-center justify-center overflow-hidden">
+      <Starfield count={300} isFixed scrollSpeed={1.5} />
+      <div className="absolute bottom-[-110vh] left-1/2 -translate-x-1/2 w-[400vw] h-[180vh] bg-[radial-gradient(circle_at_top,rgba(16,185,129,0.15)_0%,transparent_70%)] rounded-[50%] blur-3xl animate-planet-descend" />
+      <div className="absolute bottom-[-105vh] left-1/2 -translate-x-1/2 w-[400vw] h-[180vh] bg-zinc-950 rounded-[50%] border-t-4 border-emerald-500/20 animate-planet-descend flex flex-col items-center pt-20">
+         <div className="w-full h-full bg-[radial-gradient(ellipse_at_top,rgba(16,185,129,0.05)_0%,transparent_60%)]" />
+      </div>
+      <div className="relative z-10 flex flex-col items-center justify-center h-full w-full">
+        <div className="animate-ship-ascent">
+          <div className="w-24 h-24 md:w-32 md:h-32">
+            <ShipIcon shape="arrow" color="#10b981" showJets />
+          </div>
+        </div>
+      </div>
+      <div className="absolute bottom-12 md:bottom-20 px-6 text-center retro-font text-emerald-500/70 text-[8px] md:text-sm animate-pulse tracking-[0.8em] uppercase z-20">Planetary Escape Velocity Achieved</div>
+      <style>{`
+        @keyframes planet-descend { from { transform: translateX(-50%) translateY(0); } to { transform: translateX(-50%) translateY(120vh); } }
+        @keyframes ship-ascent { 0% { transform: translateY(150px) scale(0.85); } 30% { transform: translateY(0) scale(1.0); } 100% { transform: translateY(-70vh) scale(0.5); opacity: 0; } }
+        .animate-planet-descend { animation: planet-descend 5s cubic-bezier(0.4, 0, 0.2, 1) forwards; }
+        .animate-ship-ascent { animation: ship-ascent 5s cubic-bezier(0.4, 0, 0.2, 1) forwards; }
+      `}</style>
+    </div>
+  );
 };
 
 const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState>(() => {
     const saved = localStorage.getItem(SAVE_KEY);
     const baseState: GameState = {
-      credits: INITIAL_CREDITS,
-      selectedShipId: 'vanguard',
-      ownedShips: ['vanguard'],
-      shipFittings: {
-        'vanguard': { weapons: [], shieldId: null }
-      },
-      shipColors: {},
-      currentPlanet: null,
-      currentMoon: null,
-      currentMission: null,
-      currentQuadrant: QuadrantType.ALFA,
-      conqueredMoonIds: [],
-      shipMapPosition: {
-        [QuadrantType.ALFA]: { x: 50, y: 50 },
-        [QuadrantType.BETA]: { x: 50, y: 50 },
-        [QuadrantType.GAMA]: { x: 50, y: 50 },
-        [QuadrantType.DELTA]: { x: 50, y: 50 },
-      },
-      shipRotation: 0,
-      orbitingEntityId: null,
-      orbitAngle: 0,
-      dockedPlanetId: null,
-      tutorialCompleted: false,
-      settings: DEFAULT_SETTINGS,
-      taskForceShipIds: [],
-      activeTaskForceIndex: 0,
-      pilotName: 'STRIKER',
-      pilotAvatar: '👨‍🚀'
+      credits: INITIAL_CREDITS, selectedShipId: 'vanguard', ownedShips: ['vanguard'], shipFittings: { 'vanguard': { weapons: [], shieldId: null } }, shipColors: { 'vanguard': '#10b981' }, currentPlanet: null, currentMoon: null, currentMission: null, currentQuadrant: QuadrantType.ALFA, conqueredMoonIds: [], shipMapPosition: { [QuadrantType.ALFA]: { x: 50, y: 50 }, [QuadrantType.BETA]: { x: 50, y: 50 }, [QuadrantType.GAMA]: { x: 50, y: 50 }, [QuadrantType.DELTA]: { x: 50, y: 50 }, }, shipRotation: 0, orbitingEntityId: null, orbitAngle: 0, dockedPlanetId: 'p1', tutorialCompleted: false, settings: { musicVolume: 0.3, sfxVolume: 0.5, musicEnabled: true, sfxEnabled: true, displayMode: 'windowed', autosaveEnabled: true }, taskForceShipIds: [], activeTaskForceIndex: 0, pilotName: 'STRIKER', pilotAvatar: '👨‍🚀'
     };
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      return {
-        ...baseState,
-        ...parsed,
-        settings: { ...baseState.settings, ...(parsed.settings || {}) }
-      };
-    }
+    if (saved) { try { return JSON.parse(saved); } catch(e) { return baseState; } }
     return baseState;
   });
 
-  const [screen, setScreenState] = useState<'intro' | 'hangar' | 'galaxy_map' | 'map' | 'briefing' | 'game' | 'results' | 'landing'>('intro');
-  const [briefing, setBriefing] = useState<string>('');
+  const [screen, setScreenState] = useState<'intro' | 'hangar' | 'map' | 'briefing' | 'game' | 'results' | 'warp' | 'launch'>('intro');
+  const [targetQuadrant, setTargetQuadrant] = useState<QuadrantType>(QuadrantType.ALFA);
+  const [briefing, setBriefing] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isTutorialOpen, setIsTutorialOpen] = useState(false);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isSystemMenuOpen, setIsSystemMenuOpen] = useState(false);
+  const [isWarpDialogOpen, setIsWarpDialogOpen] = useState(false);
+  const [isConfigOpen, setIsConfigOpen] = useState(false);
+  const [isManualOpen, setIsManualOpen] = useState(false);
   const [lastResult, setLastResult] = useState<{ success: boolean; reward: number } | null>(null);
-  const [activeOrdnanceTab, setActiveOrdnanceTab] = useState<'energy' | 'explosive' | 'defense'>('energy');
-  const [hangarTab, setHangarTab] = useState<'specs' | 'fitting'>('specs');
-  const [mobileHangarView, setMobileHangarView] = useState<'fleet' | 'profile'>('fleet');
-  
-  const [isTaskForceVisible, setIsTaskForceVisible] = useState(true);
-  const [isObjectListVisible, setIsObjectListVisible] = useState(true);
+  const [isAutoDocking, setIsAutoDocking] = useState(false);
 
-  const setScreen = useCallback((newScreen: typeof screen) => {
-    if (newScreen !== screen) {
-      audioService.playSfx('transition');
-      setScreenState(newScreen);
-    }
-  }, [screen]);
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (screen === 'galaxy_map' || screen === 'map') {
-          audioService.playSfx('click');
-          setIsSystemMenuOpen(prev => !prev);
-        }
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [screen]);
-
-  const saveGame = useCallback(() => {
-    localStorage.setItem(SAVE_KEY, JSON.stringify(gameState));
-  }, [gameState]);
-
-  useEffect(() => {
-    if (gameState.settings.autosaveEnabled) {
-      saveGame();
-    }
-  }, [gameState, saveGame]);
-
-  useEffect(() => {
-    audioService.setEnabled(gameState.settings.musicEnabled);
-    audioService.updateVolume(gameState.settings.musicVolume);
-  }, [gameState.settings.musicEnabled, gameState.settings.musicVolume]);
-
-  useEffect(() => {
-    switch (screen) {
-      case 'intro': audioService.playTrack('intro'); break;
-      case 'hangar': audioService.playTrack('command'); break;
-      case 'galaxy_map':
-      case 'map': audioService.playTrack('map'); break;
-      case 'game': audioService.playTrack('combat'); break;
-      default: break;
-    }
-  }, [screen]);
-
-  const activeShipId = useMemo(() => {
-    if (screen === 'game' || screen === 'map' || screen === 'briefing') {
-      return gameState.taskForceShipIds[gameState.activeTaskForceIndex] || gameState.selectedShipId;
-    }
-    return gameState.selectedShipId;
-  }, [screen, gameState.taskForceShipIds, gameState.activeTaskForceIndex, gameState.selectedShipId]);
-
-  const currentShip = useMemo(() => SHIPS.find(s => s.id === activeShipId), [activeShipId]);
-  const selectedHangarShip = useMemo(() => SHIPS.find(s => s.id === gameState.selectedShipId), [gameState.selectedShipId]);
-
-  const getShipFitting = useCallback((shipId: string): ShipFitting => {
-    return gameState.shipFittings[shipId] || { weapons: [], shieldId: null };
-  }, [gameState.shipFittings]);
-
-  const selectShip = (id: string) => {
-    audioService.playSfx('click');
-    setGameState(prev => ({ ...prev, selectedShipId: id }));
-  };
-
-  const buyShip = (id: string) => {
-    const ship = SHIPS.find(item => item.id === id)!;
-    if (gameState.ownedShips.length >= 3) { audioService.playSfx('denied'); alert("FLEET FULL"); return; }
-    if (gameState.credits >= ship.price) {
-      audioService.playSfx('buy');
-      setGameState(prev => ({ ...prev, credits: prev.credits - ship.price, ownedShips: [...prev.ownedShips, id], shipFittings: { ...prev.shipFittings, [id]: { weapons: [], shieldId: null } } }));
-    } else { audioService.playSfx('denied'); }
-  };
-
-  const sellShip = (id: string) => {
-    audioService.playSfx('buy');
-    const ship = SHIPS.find(s => s.id === id)!;
-    const refund = Math.floor(ship.price * 0.6);
-    setGameState(prev => {
-      const newOwned = prev.ownedShips.filter(sId => sId !== id);
-      return { ...prev, credits: prev.credits + refund, ownedShips: newOwned, selectedShipId: newOwned.length > 0 ? newOwned[0] : prev.selectedShipId };
-    });
-  };
-
-  const setWeaponCount = (weaponId: string, count: number) => {
-    const shipId = gameState.selectedShipId;
-    if (!shipId) return;
-    const w = WEAPONS.find(item => item.id === weaponId)!;
-    const currentFitting = getShipFitting(shipId);
-    const weaponEntry = currentFitting.weapons.find(ew => ew.id === weaponId);
-    const prevCount = weaponEntry?.count || 0;
-    const costDiff = (count - prevCount) * w.price;
-    if (costDiff > gameState.credits) { audioService.playSfx('denied'); return; }
-    setGameState(prev => {
-      const shipId = prev.selectedShipId!;
-      const fitting = prev.shipFittings[shipId] || { weapons: [], shieldId: null };
-      const newWeapons = [...fitting.weapons];
-      const index = newWeapons.findIndex(ew => ew.id === weaponId);
-      if (index > -1) newWeapons[index] = { ...newWeapons[index], count };
-      else newWeapons.push({ id: weaponId, count });
-      return { ...prev, credits: prev.credits - costDiff, shipFittings: { ...prev.shipFittings, [shipId]: { ...fitting, weapons: newWeapons.filter(ew => ew.count > 0) } } };
-    });
-  };
-
-  const setEquippedShield = (shieldId: string) => {
-    const shipId = gameState.selectedShipId;
-    if (!shipId) return;
-    const currentFitting = getShipFitting(shipId);
-    if (currentFitting.shieldId === shieldId) {
-      setGameState(prev => ({ ...prev, shipFittings: { ...prev.shipFittings, [shipId]: { ...prev.shipFittings[shipId], shieldId: null } } }));
-      return;
-    }
-    const s = SHIELDS.find(item => item.id === shieldId)!;
-    if (gameState.credits >= s.price) {
-      audioService.playSfx('buy');
-      setGameState(prev => ({ ...prev, credits: prev.credits - s.price, shipFittings: { ...prev.shipFittings, [shipId]: { ...prev.shipFittings[shipId], shieldId: shieldId } } }));
-    } else { audioService.playSfx('denied'); }
-  };
-
-  const updateGameState = (updates: Partial<GameState>) => { setGameState(prev => ({ ...prev, ...updates })); };
+  useEffect(() => { localStorage.setItem(SAVE_KEY, JSON.stringify(gameState)); }, [gameState]);
 
   const onArrival = async (entity: any) => {
-    if (gameState.taskForceShipIds.length === 0) { alert("TASK FORCE DEPLETED"); return; }
-    if (entity?.id === 'sun') return; 
     audioService.playSfx('click');
-    setIsLoading(true);
-    
-    let targetPlanet: Planet | null = null;
-    let targetMoon: Moon | null = null;
-    let missionType = MissionType.ATTACK;
-    let targetName = "Unknown Target";
-
-    if (entity?.id === 'comet_boss') {
-      missionType = MissionType.COMET;
-      targetName = "NEMESIS COMET";
-    } else if (entity && 'moons' in entity) {
-      targetPlanet = entity as Planet;
-      targetName = targetPlanet.name;
-    } else if (entity) {
-      targetMoon = entity as Moon;
-      targetPlanet = PLANETS.find(p => p.moons.some(m => m.id === targetMoon?.id)) || null;
-      targetName = targetMoon.name;
+    if (entity.id === 'sun') return; 
+    if (entity.status === 'friendly') {
+      setGameState(p => ({ ...p, dockedPlanetId: entity.id, currentQuadrant: entity.quadrant }));
+      setScreenState('hangar');
+      setIsAutoDocking(false);
+      return;
     }
-
-    setGameState(prev => ({ 
-      ...prev, 
-      currentPlanet: targetPlanet, 
-      currentMoon: targetMoon, 
-      currentMission: missionType
-    }));
-    
-    const briefingText = missionType === MissionType.COMET 
-      ? "COMM-INTERCEPT: Massive celestial body detected on collision course. Solar pressure has ignited its atmosphere into a lethal plasma tail. Destroy the nucleus before it escapes the sector."
-      : await getMissionBriefing(targetName, MissionType.ATTACK);
-
+    setIsLoading(true);
+    let targetPlanet: Planet | null = entity && 'moons' in entity ? entity : null;
+    let targetMoon: Moon | null = entity && !('moons' in entity) ? entity : null;
+    let missionType = MissionType.ATTACK;
+    setGameState(prev => ({ ...prev, currentPlanet: targetPlanet, currentMoon: targetMoon, currentMission: missionType, dockedPlanetId: null }));
+    const briefingText = await getMissionBriefing(entity.name, MissionType.ATTACK);
     setBriefing(briefingText);
     setIsLoading(false);
-    setScreen('briefing');
+    setScreenState('briefing');
   };
 
-  const onGameOver = (success: boolean) => {
-    const targetDifficulty = (gameState.currentMoon?.difficulty || gameState.currentPlanet?.difficulty || 1);
-    const reward = success ? (gameState.currentMission === MissionType.COMET ? 35000 : targetDifficulty * 8000) : 1000;
-    setLastResult({ success, reward });
-    setGameState(prev => {
-      const newConquered = success && prev.currentMoon ? [...prev.conqueredMoonIds, prev.currentMoon.id] : prev.conqueredMoonIds;
-      let newTaskForce = [...prev.taskForceShipIds];
-      if (!success) newTaskForce.splice(prev.activeTaskForceIndex, 1);
-      return { 
-        ...prev, 
-        credits: prev.credits + reward, 
-        conqueredMoonIds: Array.from(new Set(newConquered)), 
-        tutorialCompleted: true,
-        taskForceShipIds: newTaskForce, 
-        activeTaskForceIndex: Math.max(0, Math.min(prev.activeTaskForceIndex, newTaskForce.length - 1))
-      };
-    });
-    setScreen('results');
-  };
-
-  const showHeader = useMemo(() => { if (screen === 'intro' || screen === 'landing') return false; if (screen === 'game' && gameState.settings.displayMode === 'fullscreen') return false; return true; }, [screen, gameState.settings.displayMode]);
-  const sectorPlanets = useMemo(() => PLANETS.filter(p => p.quadrant === gameState.currentQuadrant), [gameState.currentQuadrant]);
-
-  const introStars = useMemo(() => {
-    return Array.from({ length: 150 }).map((_, i) => ({
-      x: Math.random() * 100,
-      y: Math.random() * 100,
-      size: Math.random() * 2 + 1,
-      speed: Math.random() * 0.05 + 0.02
-    }));
-  }, []);
+  const handleJump = (q: QuadrantType) => { setTargetQuadrant(q); setIsWarpDialogOpen(false); setGameState(p => ({ ...p, dockedPlanetId: null })); setScreenState('warp'); setIsAutoDocking(false); };
+  const handleReturnHome = () => { if (gameState.dockedPlanetId) { const p = PLANETS.find(p => p.id === gameState.dockedPlanetId); if (p) { setTargetQuadrant(p.quadrant); setIsAutoDocking(true); setScreenState('warp'); } } else { setScreenState('intro'); } };
+  const currentShip = useMemo(() => SHIPS.find(s => s.id === gameState.selectedShipId), [gameState.selectedShipId]);
+  const exitHangar = () => { setScreenState('launch'); };
+  const updatePilot = (name: string, avatar: string) => { setGameState(p => ({ ...p, pilotName: name, pilotAvatar: avatar })); };
+  const updateShipColor = (color: string) => { if (gameState.selectedShipId) { setGameState(p => ({ ...p, shipColors: { ...p.shipColors, [gameState.selectedShipId!]: color } })); } };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-0 bg-zinc-950 text-emerald-50 overflow-hidden select-none">
-      {showHeader && (
-        <div className="fixed top-0 left-0 right-0 p-0 bg-zinc-900/80 backdrop-blur border-b border-zinc-700 grid grid-cols-3 items-center z-50 h-16 px-6">
-          <div className="flex flex-col justify-center text-left">
-            <div className="retro-font text-[10px] md:text-sm text-emerald-400 uppercase tracking-tighter">GALACTIC DEFENDER</div>
-            <div className="text-[8px] text-zinc-500 font-mono uppercase">SYSTEM REV. V5.60</div>
-          </div>
-          <div className="flex items-center justify-center gap-3">
-             <div className="w-10 h-10 rounded border border-zinc-700 bg-black flex items-center justify-center text-xl">{gameState.pilotAvatar}</div>
-             <div className="flex flex-col hidden sm:flex text-left">
-                <span className="text-[10px] text-zinc-500 uppercase font-mono tracking-tighter">Command Authority</span>
-                <span className="retro-font text-[10px] text-white uppercase">{gameState.pilotName}</span>
-             </div>
-             
-             {currentShip && (
-               <div className="flex flex-col border-l border-zinc-800 pl-3 hidden lg:flex text-left animate-in fade-in duration-500">
-                  <span className="text-[10px] text-zinc-500 uppercase font-mono tracking-tighter">Active Vessel</span>
-                  <span className="retro-font text-[10px] text-blue-400 uppercase">{currentShip.name}</span>
-               </div>
-             )}
-
-             {screen === 'map' && (
-               <div className="flex gap-2 ml-4 animate-in fade-in slide-in-from-top-2 duration-300">
-                  {!isObjectListVisible && (
-                    <button onClick={() => setIsObjectListVisible(true)} className="px-3 py-1.5 bg-emerald-950/40 border border-emerald-500/30 text-[8px] retro-font text-emerald-400 hover:bg-emerald-800/40 transition-all rounded shadow-[0_0_10px_rgba(16,185,129,0.1)]">RECOVER SENSORS</button>
-                  )}
-                  {!isTaskForceVisible && (
-                    <button onClick={() => setIsTaskForceVisible(true)} className="px-3 py-1.5 bg-blue-950/40 border border-blue-500/30 text-[8px] retro-font text-blue-400 hover:bg-blue-800/40 transition-all rounded shadow-[0_0_10px_rgba(59,130,246,0.1)]">RECOVER FLEET</button>
-                  )}
-               </div>
-             )}
-          </div>
-          <div className="flex flex-col items-end">
-            <span className="text-[10px] text-zinc-500 uppercase tracking-tighter">Budget Term</span>
-            <span className="retro-font text-xs md:text-lg text-yellow-400">₿{gameState.credits.toLocaleString()}</span>
+    <div className="w-full h-full flex flex-col bg-black text-white selection:bg-emerald-500 overflow-hidden font-mono">
+      {screen === 'intro' && (
+        <div className="flex-grow flex flex-col items-center justify-center relative p-6 md:p-10">
+          <Starfield count={150} isFixed />
+          <div className="relative z-10 text-center space-y-6 md:space-y-10 max-w-3xl">
+            <h1 className="retro-font text-3xl md:text-7xl text-emerald-500 animate-pulse drop-shadow-[0_0_20px_rgba(16,185,129,0.4)] uppercase">Galactic Defender</h1>
+            <div className="bg-white/5 p-6 md:p-10 border border-white/10 backdrop-blur-xl space-y-4 md:space-y-6 rounded-lg shadow-2xl">
+              <p className="text-emerald-400 text-sm md:text-xl leading-relaxed uppercase tracking-widest font-bold">Year 2348: Outer Rim Expansion</p>
+              <p className="text-zinc-400 text-[10px] md:text-base leading-relaxed uppercase tracking-tighter">Alien signals have disrupted our colonies. Our outposts are falling silent. You are authorized to defend our sectors at any cost.</p>
+            </div>
+            <button onClick={() => setScreenState('hangar')} className="px-10 py-5 bg-white/5 hover:bg-white/10 border border-white/10 retro-font text-[10px] md:text-sm rounded-lg uppercase tracking-widest transition-all backdrop-blur-md shadow-xl active:scale-95">Initialize Commander</button>
           </div>
         </div>
       )}
-
-      <main className={`w-full flex flex-col items-center transition-all ${showHeader ? 'h-[calc(100vh-64px)] mt-16' : 'h-screen mt-0'} ${screen === 'game' && gameState.settings.displayMode === 'fullscreen' ? 'h-screen' : ''} overflow-hidden`}>
-        {screen === 'intro' && (
-          <div className="relative w-full h-full flex flex-col items-center overflow-hidden bg-black">
-            <div className="absolute inset-0 z-0">
-               {introStars.map((s, i) => (
-                 <div 
-                   key={i} 
-                   className="absolute bg-white rounded-full opacity-60 animate-pulse"
-                   style={{ 
-                     left: s.x + '%', 
-                     top: s.y + '%', 
-                     width: s.size + 'px', 
-                     height: s.size + 'px',
-                     animationDelay: (Math.random() * 5) + 's'
-                   }} 
-                 />
+      {screen === 'warp' && <WarpTransition onComplete={() => { setGameState(p => ({ ...p, currentQuadrant: targetQuadrant })); setScreenState('map'); }} />}
+      {screen === 'launch' && <LaunchSimulation onComplete={() => setScreenState('map')} />}
+      {screen === 'hangar' && (
+        <div className="flex-grow flex flex-col h-full bg-zinc-950 relative overflow-hidden">
+           <Starfield count={50} isFixed />
+           <header className="flex justify-between items-center p-4 md:p-6 border-b border-white/5 relative z-10 shrink-0">
+             <div className="retro-font text-xs md:text-2xl text-emerald-400">COMMAND HANGAR</div>
+             <div className="flex gap-2">
+                <button onClick={() => setIsConfigOpen(true)} className="px-4 py-2 bg-white/5 border border-white/10 retro-font text-[8px] hover:bg-white/10 transition-all uppercase rounded backdrop-blur-sm">Config</button>
+                <button onClick={() => setIsManualOpen(true)} className="px-4 py-2 bg-white/5 border border-white/10 retro-font text-[8px] hover:bg-white/10 transition-all uppercase rounded backdrop-blur-sm">Manual</button>
+                <div className="retro-font text-yellow-500 text-[10px] md:text-sm uppercase tracking-tight ml-4 flex items-center">₿{gameState.credits.toLocaleString()}</div>
+             </div>
+           </header>
+           <div className="flex-grow flex flex-col md:flex-row gap-4 p-4 md:p-8 overflow-hidden relative z-10">
+             <div className="w-full md:w-1/3 bg-white/5 border border-white/10 p-4 overflow-y-auto space-y-2 rounded-lg backdrop-blur-xl custom-scrollbar">
+               <h3 className="retro-font text-[8px] md:text-[9px] text-zinc-500 mb-2 uppercase tracking-widest">Fleet Assets</h3>
+               {SHIPS.map(ship => (
+                 <div key={ship.id} onClick={() => setGameState(p => ({ ...p, selectedShipId: ship.id }))} className={`p-4 border transition-all flex justify-between items-center cursor-pointer rounded-lg ${gameState.selectedShipId === ship.id ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-white/5 hover:bg-white/5 hover:border-white/20'}`}>
+                   <span className="retro-font text-[8px] md:text-[9px] uppercase">{ship.name}</span>
+                   <div className="w-8 h-8 md:w-10 md:h-10"><ShipIcon shape={ship.shape} color={gameState.shipColors[ship.id] || ship.defaultColor} /></div>
+                 </div>
                ))}
-            </div>
-
-            <div className="z-20 mt-12 md:mt-20 text-center px-4">
-              <h1 className="retro-font text-3xl md:text-7xl text-emerald-500 drop-shadow-[0_0_20px_rgba(16,185,129,0.8)] uppercase animate-in slide-in-from-top duration-1000">Galactic Defender</h1>
-              <div className="h-1 w-32 md:w-64 bg-emerald-600 mx-auto mt-4 shadow-[0_0_10px_rgba(16,185,129,0.5)]" />
-            </div>
-
-            <div className="z-10 flex-grow w-full max-w-4xl relative overflow-hidden mt-4">
-              <div className="absolute inset-0 flex justify-center">
-                <div className="w-[80%] md:w-[60%] text-center text-yellow-400 retro-font text-[12px] md:text-lg uppercase leading-loose animate-crawl">
-                  <p className="mb-20">A long time ago in a sector far, far away...</p>
-                  <p className="mb-20">The Earth Union has expanded its reach to the stars, colonizing distant worlds in the Gamma and Delta sectors.</p>
-                  <p className="mb-20">But a mysterious alien force has emerged from the shadows of the Xenon Rift. Colonized worlds are falling one by one.</p>
-                  <p className="mb-20">As a top-tier pilot of the Union Task Force, you are our only hope to stabilize the colony network.</p>
-                  <p className="mb-20">Defend the colonies. Reclaim our future. Good luck, Commander.</p>
+             </div>
+             <div className="w-full md:w-2/3 flex flex-col gap-4 overflow-hidden">
+               <div className="flex-grow bg-white/5 border border-white/10 p-6 flex flex-col items-center justify-center gap-4 md:gap-8 relative overflow-hidden rounded-lg backdrop-blur-xl shadow-2xl">
+                 {gameState.selectedShipId && (
+                   <>
+                     <div className="w-32 h-32 md:w-48 md:h-48 relative z-10 drop-shadow-[0_0_40px_rgba(16,185,129,0.25)] shrink-0"><ShipIcon shape={SHIPS.find(s=>s.id === gameState.selectedShipId)!.shape} color={gameState.shipColors[gameState.selectedShipId] || SHIPS.find(s=>s.id === gameState.selectedShipId)!.defaultColor} /></div>
+                     <div className="text-center z-10 max-w-md overflow-y-auto px-4"><h2 className="retro-font text-sm md:text-2xl text-emerald-400 mb-2 uppercase">{SHIPS.find(s=>s.id === gameState.selectedShipId)!.name}</h2><p className="text-zinc-400 text-[9px] md:text-xs uppercase tracking-tighter leading-relaxed">{SHIPS.find(s=>s.id === gameState.selectedShipId)!.description}</p></div>
+                   </>
+                 )}
+               </div>
+               <button onClick={exitHangar} className="w-full py-6 md:py-8 bg-emerald-500/5 hover:bg-emerald-500/15 border border-emerald-500/40 retro-font text-xs md:text-xl tracking-[0.4em] transition-all rounded-lg shrink-0 uppercase shadow-lg">Depart to Orbit</button>
+             </div>
+           </div>
+           {isConfigOpen && (
+             <div className="fixed inset-0 z-[1200] bg-black/90 backdrop-blur-xl flex items-center justify-center p-6">
+                <div className="bg-zinc-900/60 border border-white/10 p-8 max-w-lg w-full space-y-8 rounded-lg backdrop-blur-2xl shadow-2xl">
+                   <h3 className="retro-font text-lg text-emerald-400 uppercase tracking-widest text-center">Pilot Matrix</h3>
+                   <div className="space-y-4">
+                      <div><label className="retro-font text-[10px] text-zinc-500 uppercase block mb-2">Callsign</label><input value={gameState.pilotName} onChange={(e) => updatePilot(e.target.value, gameState.pilotAvatar)} className="w-full bg-white/5 border border-white/10 p-4 text-emerald-400 uppercase retro-font text-xs outline-none focus:border-emerald-500 rounded-lg" /></div>
+                      <div><label className="retro-font text-[10px] text-zinc-500 uppercase block mb-2">Bio-Avatar</label><div className="flex gap-4 text-3xl">{['👨‍🚀', '👩‍🚀', '👽', '🤖', '💀'].map(a => (<button key={a} onClick={() => updatePilot(gameState.pilotName, a)} className={`p-3 border transition-all rounded-lg ${gameState.pilotAvatar === a ? 'border-emerald-500 bg-emerald-500/10' : 'border-white/10 hover:bg-white/10'}`}>{a}</button>))}</div></div>
+                      <div><label className="retro-font text-[10px] text-zinc-500 uppercase block mb-2">Hull Coating</label><div className="flex gap-3">{['#10b981', '#3b82f6', '#ef4444', '#f59e0b', '#a855f7', '#ffffff'].map(c => (<button key={c} onClick={() => updateShipColor(c)} className={`w-10 h-10 rounded-full border-2 transition-transform hover:scale-125 ${gameState.shipColors[gameState.selectedShipId!] === c ? 'border-white shadow-[0_0_10px_white]' : 'border-transparent'}`} style={{ backgroundColor: c }} />))}</div></div>
+                   </div>
+                   <button onClick={() => setIsConfigOpen(false)} className="w-full py-4 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/40 retro-font text-xs uppercase rounded-lg transition-all shadow-lg">Sync Matrix</button>
                 </div>
-              </div>
-              <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black to-transparent pointer-events-none z-30" />
-            </div>
-
-            <div className="z-50 w-full max-w-2xl px-8 pb-12 md:pb-20 flex flex-col md:flex-row gap-6 mt-auto">
-               <button 
-                onClick={() => { audioService.playSfx('click'); setScreen('hangar'); }} 
-                className="flex-1 retro-font bg-emerald-600 hover:bg-emerald-500 text-white px-8 py-5 rounded-sm border-b-4 border-emerald-800 active:translate-y-1 transition-all shadow-[0_10px_30px_rgba(16,185,129,0.3)] text-xs md:text-base uppercase tracking-widest"
-              >
-                Initialize
-              </button>
-              {gameState.tutorialCompleted && (
-                <button 
-                  onClick={() => { audioService.playSfx('click'); setScreen('galaxy_map'); }} 
-                  className="flex-1 retro-font bg-blue-600 hover:bg-blue-500 text-white px-8 py-5 rounded-sm border-b-4 border-blue-800 active:translate-y-1 transition-all shadow-[0_10px_30px_rgba(59,130,246,0.3)] text-xs md:text-base uppercase tracking-widest"
-                >
-                  Resume
-                </button>
-              )}
-            </div>
-
-            <style>{`
-              @keyframes crawl {
-                0% { transform: translateY(100%); }
-                100% { transform: translateY(-150%); }
-              }
-              .animate-crawl { animation: crawl 45s linear infinite; }
-            `}</style>
-          </div>
-        )}
-
-        {screen === 'hangar' && (
-          <div className="w-full h-full max-w-7xl px-4 py-4 md:py-8 flex flex-col gap-4 overflow-hidden">
-            <div className="flex justify-between items-center mb-0 md:mb-2 shrink-0">
-               <h2 className="retro-font text-lg md:text-2xl text-zinc-400 uppercase tracking-[0.2em]">Fleet Operations</h2>
-               <div className="flex md:hidden bg-zinc-800 rounded p-1">
-                 <button onClick={() => setMobileHangarView('fleet')} className={`px-4 py-2 retro-font text-[8px] rounded ${mobileHangarView === 'fleet' ? 'bg-emerald-600 text-white' : 'text-zinc-500'}`}>FLEET</button>
-                 <button onClick={() => setMobileHangarView('profile')} className={`px-4 py-2 retro-font text-[8px] rounded ${mobileHangarView === 'profile' ? 'bg-emerald-600 text-white' : 'text-zinc-500'}`}>PILOT</button>
-               </div>
-            </div>
-
-            <div className="flex flex-col md:flex-row gap-4 md:gap-6 flex-grow min-h-0">
-               <div className={`bg-zinc-900 border border-zinc-700 rounded-lg flex flex-col overflow-hidden shadow-2xl transition-all ${mobileHangarView === 'fleet' ? 'flex h-[310px] md:h-full md:w-1/3' : 'hidden md:flex md:w-1/3'}`}>
-                  <div className="p-4 border-b border-zinc-800 bg-zinc-800/20 flex justify-between items-center shrink-0">
-                    <h3 className="retro-font text-[10px] text-zinc-400 uppercase tracking-tighter">Vessel Registry</h3>
-                    <span className="text-[9px] font-mono text-zinc-500 uppercase">{gameState.ownedShips.length}/3 IN USE</span>
-                  </div>
-                  <div className="flex-grow overflow-y-auto p-4 space-y-3 custom-scrollbar min-h-0">
-                    {SHIPS.map(ship => {
-                      const isOwned = gameState.ownedShips.includes(ship.id);
-                      const isSelected = gameState.selectedShipId === ship.id;
-                      const shipFitting = isOwned ? getShipFitting(ship.id) : { weapons: [], shieldId: null };
-                      return (
-                        <div key={ship.id} onClick={() => selectShip(ship.id)} className={`p-4 border-2 rounded transition-all cursor-pointer flex justify-between items-center ${isSelected ? 'border-emerald-500 bg-emerald-900/10' : 'border-zinc-800 bg-zinc-800/30 hover:border-zinc-600'}`}>
-                          <div className="flex flex-col text-left"><span className={`font-bold text-xs uppercase ${isSelected ? 'text-emerald-400' : 'text-zinc-300'}`}>{ship.name}</span><span className="text-[9px] text-zinc-500 uppercase font-mono">{isOwned ? 'ACTIVE' : 'AVAILABLE'}</span></div>
-                          <div className="w-10 h-10"><ShipIcon shape={ship.shape} isActive={isSelected} color={gameState.shipColors[ship.id] || ship.defaultColor || '#10b981'} weaponCount={shipFitting.weapons.reduce((a,b)=>a+b.count, 0)} shield={SHIELDS.find(s=>s.id===shipFitting.shieldId)} canLayMines={ship.canLayMines}/></div>
-                        </div>
-                      );
-                    })}
-                  </div>
-               </div>
-
-               <div className={`bg-zinc-900 border border-zinc-700 rounded-lg flex flex-col overflow-hidden shadow-2xl transition-all ${mobileHangarView === 'fleet' ? 'flex flex-1 md:w-1/3' : 'hidden md:flex md:w-1/3'}`}>
-                  <div className="flex bg-black/40 border-b border-zinc-800 shrink-0">
-                    <button onClick={() => setHangarTab('specs')} className={`flex-1 py-4 retro-font text-[9px] uppercase tracking-tighter transition-colors ${hangarTab === 'specs' ? 'text-emerald-400 bg-emerald-900/10' : 'text-zinc-600 hover:text-zinc-400'}`}>SPECS</button>
-                    <button onClick={() => setHangarTab('fitting')} className={`flex-1 py-4 retro-font text-[9px] uppercase tracking-tighter transition-colors ${hangarTab === 'fitting' ? 'text-emerald-400 bg-emerald-900/10' : 'text-zinc-600 hover:text-zinc-400'}`}>FITTING</button>
-                  </div>
-                  <div className="flex-grow overflow-y-auto p-5 custom-scrollbar flex flex-col min-h-0">
-                    {selectedHangarShip ? (
-                      hangarTab === 'specs' ? (
-                        <div className="flex flex-col h-full animate-in fade-in duration-300">
-                           <div className="flex flex-col items-center gap-4 md:gap-6 mb-4 md:mb-8 mt-2 shrink-0">
-                              <div className="w-24 h-24 md:w-32 md:h-32 p-4 bg-black/40 rounded-full border border-emerald-500/20 shadow-[0_0_40px_rgba(16,185,129,0.1)]">
-                                <ShipIcon shape={selectedHangarShip.shape} isActive={true} color={gameState.shipColors[selectedHangarShip.id] || selectedHangarShip.defaultColor || '#10b981'} weaponCount={gameState.ownedShips.includes(selectedHangarShip.id) ? getShipFitting(selectedHangarShip.id).weapons.reduce((a,b)=>a+b.count, 0) : 0} shield={gameState.ownedShips.includes(selectedHangarShip.id) ? SHIELDS.find(s=>s.id===getShipFitting(selectedHangarShip.id).shieldId) : null} canLayMines={selectedHangarShip.canLayMines}/>
-                              </div>
-                              <div className="text-center">
-                                <span className="text-[10px] retro-font text-emerald-400 uppercase tracking-widest">{selectedHangarShip.name}</span>
-                                <p className="text-[9px] font-mono text-zinc-500 mt-2 italic uppercase line-clamp-2 md:line-clamp-none">"{selectedHangarShip.description}"</p>
-                              </div>
-                           </div>
-                           <div className="grid grid-cols-2 gap-3 md:gap-4 mb-auto">
-                              <div className="p-3 bg-black/20 border border-zinc-800 rounded text-left">
-                                <span className="text-[7px] font-mono text-zinc-500 uppercase block mb-1">Combat Role</span>
-                                <span className="text-[10px] retro-font text-blue-400 uppercase">{selectedHangarShip.id === 'hauler' ? 'TRANSPORT' : selectedHangarShip.id === 'interceptor' ? 'SPEED' : 'MULTI-ROLE'}</span>
-                              </div>
-                              <div className="p-3 bg-black/20 border border-zinc-800 rounded text-left">
-                                <span className="text-[10px] retro-font text-red-400 uppercase">{selectedHangarShip.speed * 10} KM/S</span>
-                              </div>
-                           </div>
-                           <div className="mt-6 md:mt-8 shrink-0 pb-4 md:pb-0">
-                             {gameState.ownedShips.includes(selectedHangarShip.id) ? (
-                               <button onClick={() => sellShip(selectedHangarShip.id)} className="w-full py-4 bg-red-900/20 hover:bg-red-900/40 text-red-500 border-2 border-red-900/50 retro-font text-[9px] uppercase tracking-widest transition-all">DECOMMISSION (₿{Math.floor(selectedHangarShip.price * 0.6)})</button>
-                             ) : (
-                               <button onClick={() => buyShip(selectedHangarShip.id)} className="w-full py-4 bg-blue-900/20 hover:bg-blue-900/40 text-blue-400 border-2 border-blue-900/50 retro-font text-[9px] uppercase tracking-widest transition-all">ACQUIRE (₿{selectedHangarShip.price.toLocaleString()})</button>
-                             )}
-                           </div>
-                        </div>
-                      ) : (
-                        <div className="space-y-6 animate-in fade-in duration-300">
-                          <div className="flex border-b border-zinc-800 bg-black/10 shrink-0">
-                            <button onClick={() => setActiveOrdnanceTab('energy')} className={`flex-1 py-3 text-[8px] retro-font transition-all ${activeOrdnanceTab === 'energy' ? 'text-emerald-400 bg-emerald-900/10' : 'text-zinc-600'}`}>ENERGY</button>
-                            <button onClick={() => setActiveOrdnanceTab('explosive')} className={`flex-1 py-3 text-[8px] retro-font transition-all ${activeOrdnanceTab === 'explosive' ? 'text-blue-400 bg-blue-900/10' : 'text-zinc-600'}`}>EXPLOSIVE</button>
-                            <button onClick={() => setActiveOrdnanceTab('defense')} className={`flex-1 py-3 text-[8px] retro-font transition-all ${activeOrdnanceTab === 'defense' ? 'text-cyan-400 bg-cyan-900/10' : 'text-zinc-600'}`}>SHIELD</button>
-                          </div>
-                          <div className="space-y-4 pb-4">
-                            {activeOrdnanceTab !== 'defense' ? (
-                              WEAPONS.filter(w => activeOrdnanceTab === 'energy' ? (w.type === WeaponType.PROJECTILE || w.type === WeaponType.LASER) : (w.type === WeaponType.MISSILE || w.type === WeaponType.MINE)).map(w => {
-                                const currentFitting = getShipFitting(selectedHangarShip.id);
-                                const weaponEntry = currentFitting.weapons.find(ew => ew.id === w.id);
-                                const count = weaponEntry?.count || 0;
-                                return (
-                                  <div key={w.id} className="p-3 bg-black/30 border border-zinc-800 rounded text-left">
-                                    <div className="flex justify-between text-[9px] mb-3 uppercase font-bold"><span className="text-zinc-300">{w.name}</span><span className="text-yellow-600 font-mono">₿{w.price}</span></div>
-                                    <div className="flex items-center gap-3">
-                                      <input type="range" min="0" max={w.isAmmoBased ? 200 : 2} value={count} onChange={(e) => setWeaponCount(w.id, parseInt(e.target.value))} className="flex-grow accent-emerald-500" />
-                                      <span className="text-[10px] font-mono w-10 text-right text-emerald-400">{count}</span>
-                                    </div>
-                                  </div>
-                                );
-                              })
-                            ) : (
-                              SHIELDS.map(s => (
-                                <div key={s.id} onClick={() => setEquippedShield(s.id)} className={`p-4 border-2 rounded transition-all cursor-pointer flex justify-between items-center ${getShipFitting(selectedHangarShip.id).shieldId === s.id ? 'border-cyan-500 bg-cyan-950/20' : 'border-zinc-800 bg-zinc-800/30'}`}>
-                                  <div className="flex flex-col text-left"><span className="font-bold text-[10px] uppercase text-zinc-300">{s.name}</span><span className="text-[8px] font-mono text-cyan-600 uppercase">CAP: {s.capacity}</span></div>
-                                  <span className="text-[10px] font-mono text-yellow-600">₿{s.price.toLocaleString()}</span>
-                                </div>
-                              ))
-                            )}
-                          </div>
-                        </div>
-                      )
-                    ) : (
-                      <div className="h-full flex items-center justify-center text-zinc-700 text-[10px] retro-font uppercase animate-pulse">Select a Vessel</div>
-                    )}
-                  </div>
-               </div>
-
-               <div className={`bg-zinc-900 border border-zinc-700 rounded-lg flex flex-col overflow-hidden shadow-2xl transition-all ${mobileHangarView === 'profile' ? 'flex flex-1 md:w-1/3' : 'hidden md:flex md:w-1/3'}`}>
-                  <div className="p-4 border-b border-zinc-800 bg-zinc-800/20 shrink-0 text-left"><h3 className="retro-font text-[10px] text-emerald-400 uppercase tracking-tighter">Command Profile</h3></div>
-                  <div className="flex-grow p-6 flex flex-col min-h-0">
-                    <div className="p-4 bg-black/60 border border-zinc-800 rounded-lg flex items-center gap-4 mb-6 shrink-0 text-left">
-                       <div className="w-16 h-16 bg-emerald-900/20 border border-emerald-500/30 rounded flex items-center justify-center text-4xl">{gameState.pilotAvatar}</div>
-                       <div className="flex flex-col gap-1"><span className="text-[8px] text-zinc-500 uppercase font-mono tracking-widest">Operator-ID</span><span className="retro-font text-[12px] text-white uppercase">{gameState.pilotName}</span></div>
-                    </div>
-                    <div className="space-y-4 mb-auto shrink-0">
-                      <div className="flex justify-between items-center text-[10px] font-mono border-b border-zinc-800 pb-2"><span className="text-zinc-500 uppercase">Budget</span><span className="text-yellow-500 font-bold">₿{gameState.credits.toLocaleString()}</span></div>
-                      <div className="flex justify-between items-center text-[10px] font-mono border-b border-zinc-800 pb-2"><span className="text-zinc-500 uppercase">Fleet Size</span><span className="text-white font-bold">{gameState.ownedShips.length} UNITS</span></div>
-                    </div>
-                    <div className="mt-auto pt-6 space-y-4 shrink-0 pb-4 md:pb-0">
-                      <div className="grid grid-cols-2 gap-3">
-                        <button onClick={() => setIsTutorialOpen(true)} className="py-3 bg-zinc-800 hover:bg-zinc-700 text-white rounded retro-font text-[8px] uppercase tracking-widest transition-all">MANUAL</button>
-                        <button onClick={() => setIsSettingsOpen(true)} className="py-3 bg-zinc-800 hover:bg-zinc-700 text-white rounded retro-font text-[8px] uppercase tracking-widest transition-all">CONFIG</button>
-                      </div>
-                      <button 
-                        onClick={() => { audioService.playSfx('click'); saveGame(); setScreen('intro'); }} 
-                        className="w-full py-3 bg-zinc-900 border border-zinc-700 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded retro-font text-[8px] uppercase tracking-widest transition-all"
-                      >
-                        Save & Exit to Title
-                      </button>
-                      <button disabled={gameState.ownedShips.length === 0} onClick={() => setScreen('galaxy_map')} className="w-full py-6 bg-emerald-600 hover:bg-emerald-500 text-white retro-font text-[11px] uppercase tracking-[0.2em] border-b-4 border-emerald-900 rounded-sm transition-all shadow-xl active:translate-y-1 disabled:opacity-20 disabled:cursor-not-allowed">JUMP TO SECTOR</button>
-                    </div>
-                  </div>
-               </div>
-            </div>
-            {isTutorialOpen && <HelpModal onClose={() => setIsTutorialOpen(false)} />}
-            {isSettingsOpen && <SettingsModal gameState={gameState} onUpdateGameState={updateGameState} onUpdateSettings={(s: any) => updateGameState({ settings: {...gameState.settings, ...s}})} onClose={() => setIsSettingsOpen(false)} />}
-          </div>
-        )}
-
-        {screen === 'galaxy_map' && (
-          <GalaxyMapScreen onSelectQuadrant={(q) => {
-            setGameState(prev => ({ 
-              ...prev, currentQuadrant: q, orbitingEntityId: null,
-              taskForceShipIds: [...prev.ownedShips], activeTaskForceIndex: 0
-            }));
-            setScreen('map');
-          }} onReturn={() => setScreen('hangar')} />
-        )}
-
-        {screen === 'map' && (
-          <MapScreen 
-            planets={sectorPlanets} 
-            taskForceShipIds={gameState.taskForceShipIds}
-            activeTaskForceIndex={gameState.activeTaskForceIndex}
-            onSelectTaskForceShip={(index: number) => setGameState(prev => ({ ...prev, activeTaskForceIndex: index }))}
-            onArrival={onArrival} 
-            onReturn={() => setScreen('galaxy_map')} 
-            currentQuadrant={gameState.currentQuadrant}
-            getShipFitting={getShipFitting}
-            isTaskForceVisible={isTaskForceVisible}
-            isObjectListVisible={isObjectListVisible}
-            setIsTaskForceVisible={setIsTaskForceVisible}
-            setIsObjectListVisible={setIsObjectListVisible}
-          />
-        )}
-
-        {screen === 'briefing' && <BriefingScreen isLoading={isLoading} briefing={briefing} planet={gameState.currentPlanet} moon={gameState.currentMoon} type={gameState.currentMission} onAbort={() => setScreen('map')} onLaunch={() => setScreen('game')} />}
-        {screen === 'game' && currentShip && (
-          <div className={`w-full h-full flex items-center justify-center transition-all ${gameState.settings.displayMode === 'fullscreen' ? 'h-screen' : ''}`}>
-            <GameEngine 
-              ship={currentShip} 
-              weapons={getShipFitting(currentShip.id).weapons.map(ew => ({...WEAPONS.find(w => w.id === ew.id)!, count: ew.count}))} 
-              shield={SHIELDS.find(s=>s.id===getShipFitting(currentShip.id).shieldId) || null} 
-              missionType={gameState.currentMission!} 
-              difficulty={(gameState.currentMoon?.difficulty || gameState.currentPlanet?.difficulty || 1)} 
-              onGameOver={onGameOver} 
-              isFullScreen={gameState.settings.displayMode === 'fullscreen'} 
-              playerColor={gameState.shipColors[currentShip.id] || currentShip.defaultColor || '#10b981'}
-            />
-          </div>
-        )}
-        {screen === 'results' && lastResult && <ResultsScreen result={lastResult} onReturn={() => setScreen('map')} />}
-      </main>
-
-      {isSystemMenuOpen && (
-        <SystemMenuModal 
-          onResume={() => { audioService.playSfx('click'); setIsSystemMenuOpen(false); }}
-          onReturnToCommand={() => { audioService.playSfx('click'); saveGame(); setIsSystemMenuOpen(false); setScreen('hangar'); }}
-          onExitToTitle={() => { audioService.playSfx('click'); saveGame(); setIsSystemMenuOpen(false); setScreen('intro'); }}
-        />
+             </div>
+           )}
+           {isManualOpen && (
+             <div className="fixed inset-0 z-[1200] bg-black/90 backdrop-blur-xl flex items-center justify-center p-6">
+                <div className="bg-zinc-900/60 border border-white/10 p-8 max-w-2xl w-full space-y-6 rounded-lg backdrop-blur-2xl shadow-2xl">
+                   <h3 className="retro-font text-lg text-emerald-400 uppercase tracking-widest text-center">Fleet Protocol</h3>
+                   <div className="font-mono text-sm text-zinc-400 space-y-4 uppercase h-64 overflow-y-auto custom-scrollbar pr-4"><p className="text-emerald-500 font-bold border-b border-white/5 pb-1">Navigation:</p><p>Use the Sector Map for gravity anchors. The central star stabilizes the system. Click planets to view tactical intelligence.</p><p className="text-emerald-500 font-bold border-b border-white/5 pb-1">Deep Space Travel:</p><p>Warp Gates connect ALFA, BETA, GAMA, and DELTA quadrants. High caution advised in the Delta Singularity zone.</p><p className="text-emerald-500 font-bold border-b border-white/5 pb-1">Strategic Operations:</p><p>Engage occupied systems to restore peace. Credits earned from missions are vital for fleet sustainability.</p></div>
+                   <button onClick={() => setIsManualOpen(false)} className="w-full py-4 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/50 retro-font text-xs uppercase rounded-lg transition-all shadow-lg">Confirm Protocol</button>
+                </div>
+             </div>
+           )}
+        </div>
       )}
-    </div>
-  );
-};
-
-const GalaxyMapScreen = ({ onSelectQuadrant, onReturn }: { onSelectQuadrant: (q: QuadrantType) => void, onReturn: () => void }) => {
-  const quadrants = useMemo(() => {
-    const base = [
-      { id: QuadrantType.ALFA, name: 'ALFA SECTOR', colorClass: 'text-yellow-400', desc: 'Inner colonies and trade routes.', diff: 'Standard' },
-      { id: QuadrantType.BETA, name: 'BETA SECTOR', colorClass: 'text-red-500', desc: 'Industrial mining hub under siege.', diff: 'Moderate' },
-      { id: QuadrantType.GAMA, name: 'GAMA SECTOR', colorClass: 'text-sky-300', desc: 'Research outposts in volatile space.', diff: 'High Risk' },
-      { id: QuadrantType.DELTA, name: 'DELTA SECTOR', colorClass: 'text-orange-500', desc: 'Dark void. Origin of alien signatures.', diff: 'Extreme' },
-    ];
-
-    return base.map(q => {
-      const sectorPlanets = PLANETS.filter(p => p.quadrant === q.id);
-      const stats = sectorPlanets.reduce((acc, p) => {
-        acc.planets++;
-        acc.moons += p.moons.length;
-        if (p.status === 'friendly') acc.friendly++;
-        else acc.occupied++;
-        acc.maxHazard = Math.max(acc.maxHazard, p.difficulty);
-        return acc;
-      }, { planets: 0, moons: 0, friendly: 0, occupied: 0, maxHazard: 0 });
-
-      return { ...q, ...stats };
-    });
-  }, []);
-
-  return (
-    <div className="w-full h-full flex flex-col items-center py-6 px-4 animate-in fade-in duration-500 overflow-y-auto">
-      <div className="text-center mb-4 shrink-0">
-        <h2 className="retro-font text-2xl text-emerald-400 mb-2 tracking-widest uppercase">Galaxy Map Sectors</h2>
-        <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-tighter">Command Intelligence Feed: Active</p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-5xl w-full px-4 mb-6">
-        {quadrants.map(q => (
-          <div 
-            key={q.id} 
-            onClick={() => { audioService.playSfx('click'); onSelectQuadrant(q.id); }} 
-            className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/40 hover:bg-zinc-800/60 hover:border-zinc-700 transition-all cursor-pointer group shadow-2xl relative flex flex-col min-h-[160px]"
-          >
-            <div className={`absolute top-0 left-0 bottom-0 w-1 opacity-20 group-hover:opacity-100 transition-opacity bg-current ${q.colorClass.replace('text-', 'bg-')}`}></div>
-            
-            <div className="flex justify-between items-start mb-2">
-              <h3 className={`retro-font text-base ${q.colorClass} uppercase tracking-wide`}>{q.name}</h3>
-              <div className="px-2 py-0.5 bg-black/50 border border-zinc-800 rounded text-[10px] font-mono text-red-400 uppercase">
-                Hazard: {q.maxHazard}
-              </div>
-            </div>
-
-            <p className="text-[13px] text-zinc-300 font-mono italic mb-2 leading-tight text-left">"{q.desc}"</p>
-            
-            <div className="mt-auto pt-2 border-t border-zinc-800/50">
-              <div className="grid grid-cols-3 gap-2">
-                <div className="flex flex-col text-left">
-                  <span className="text-[9px] text-zinc-500 uppercase font-mono tracking-widest">Planets</span>
-                  <span className="text-sm font-mono text-white font-bold">{q.planets}</span>
-                </div>
-                <div className="flex flex-col border-l border-zinc-800/30 pl-2 text-left">
-                  <span className="text-[9px] text-zinc-500 uppercase font-mono tracking-widest">Moons</span>
-                  <span className="text-sm font-mono text-white font-bold">{q.moons}</span>
-                </div>
-                <div className="flex flex-col border-l border-zinc-800/30 pl-2 text-left">
-                  <span className="text-[9px] text-zinc-500 uppercase font-mono tracking-widest">Status</span>
-                  <div className="flex gap-2 items-center">
-                    <span className="text-[10px] font-mono text-emerald-500">{q.friendly}F</span>
-                    <span className="text-[10px] font-mono text-red-500">{q.occupied}O</span>
-                  </div>
-                </div>
-              </div>
-            </div>
+      {screen === 'map' && (<MapScreen planets={PLANETS.filter(p => p.quadrant === gameState.currentQuadrant)} onArrival={onArrival} currentQuadrant={gameState.currentQuadrant} onOpenWarp={() => setIsWarpDialogOpen(true)} initialFocusId={gameState.dockedPlanetId} pilotAvatar={gameState.pilotAvatar} pilotName={gameState.pilotName} selectedShipId={gameState.selectedShipId} shipColors={gameState.shipColors} onReturnHome={handleReturnHome} autoDock={isAutoDocking} />)}
+      {screen === 'briefing' && (<div className="flex-grow flex items-center justify-center p-6 bg-black relative"><Starfield count={80} isFixed /><div className="max-w-2xl w-full bg-white/5 border border-white/10 p-6 md:p-10 space-y-6 md:space-y-8 rounded-lg shadow-2xl z-10 backdrop-blur-2xl"><h2 className="retro-font text-sm md:text-2xl text-emerald-400 border-b border-white/5 pb-4 uppercase tracking-widest">Tactical Briefing</h2><p className="font-mono text-xs md:text-xl text-white uppercase leading-relaxed max-h-[30vh] overflow-y-auto custom-scrollbar">{briefing || "Decrypting transmission..."}</p><div className="flex flex-col md:flex-row gap-4"><button onClick={() => setScreenState('map')} className="w-full py-4 bg-white/5 hover:bg-white/10 border border-white/10 retro-font text-[10px] rounded-lg uppercase transition-all backdrop-blur-md">Hold Position</button><button onClick={() => setScreenState('game')} className="w-full py-4 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/40 retro-font text-[10px] rounded-lg uppercase transition-all backdrop-blur-md shadow-lg">Engage</button></div></div></div>)}
+      {screen === 'game' && currentShip && (<div className="flex-grow flex items-center justify-center relative"><GameEngine ship={currentShip} weapons={[]} shield={null} missionType={gameState.currentMission!} difficulty={5} onGameOver={(success) => { setLastResult({ success, reward: success ? 10000 : 2500 }); setGameState(p => ({ ...p, credits: p.credits + (success ? 10000 : 2500) })); setScreenState('results'); }} isFullScreen={true} playerColor={gameState.shipColors[gameState.selectedShipId!] || currentShip.defaultColor || '#10b981'} /></div>)}
+      {screen === 'results' && lastResult && (<div className="flex-grow flex flex-col items-center justify-center gap-6 md:gap-10 bg-black relative"><Starfield count={100} isFixed /><h2 className={`retro-font text-3xl md:text-6xl z-10 uppercase tracking-[0.2em] drop-shadow-2xl ${lastResult.success ? 'text-emerald-500' : 'text-red-500'}`}>{lastResult.success ? 'Victory' : 'Mission Failed'}</h2><div className="retro-font text-xs md:text-xl z-10 uppercase tracking-widest text-zinc-400">Combat Pay: ₿{lastResult.reward.toLocaleString()}</div><button onClick={() => setScreenState('map')} className="px-10 py-5 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/40 retro-font text-[10px] md:text-base rounded-lg z-10 transition-all uppercase backdrop-blur-md shadow-xl">Return to Fleet</button></div>)}
+      {isWarpDialogOpen && (
+        <div className="fixed inset-0 z-[1100] bg-black/90 flex items-center justify-center p-6 backdrop-blur-xl">
+          <div className="bg-zinc-950/60 border border-blue-500/30 p-6 md:p-10 max-w-lg w-full space-y-8 rounded-lg shadow-2xl backdrop-blur-2xl">
+            <h3 className="retro-font text-xs md:text-xl text-blue-400 text-center tracking-[0.4em] uppercase">Sector Jump Matrix</h3>
+            <div className="grid grid-cols-2 gap-4">{[{ type: QuadrantType.ALFA, color: 'text-yellow-400', bColor: 'border-yellow-500/30', icon: '#fbbf24' }, { type: QuadrantType.BETA, color: 'text-orange-500', bColor: 'border-orange-500/30', icon: '#f97316' }, { type: QuadrantType.GAMA, color: 'text-blue-400', bColor: 'border-blue-500/30', icon: '#60a5fa' }, { type: QuadrantType.DELTA, color: 'text-zinc-400', bColor: 'border-white/10', icon: '#000000' }].map(q => (<button key={q.type} onClick={() => handleJump(q.type)} className={`flex flex-col items-center justify-center py-8 border transition-all gap-4 rounded-lg ${gameState.currentQuadrant === q.type ? 'bg-blue-500/10 ' + q.bColor + ' shadow-[0_0_20px_rgba(59,130,246,0.1)]' : 'bg-white/5 border-white/5 hover:bg-white/10 hover:border-white/20'}`}><div className={`w-12 h-12 rounded-full flex items-center justify-center shadow-lg transition-transform hover:scale-110 ${q.type === QuadrantType.DELTA ? 'bg-black border border-white/10 shadow-[0_0_20px_rgba(255,255,255,0.15)]' : ''}`} style={{ backgroundColor: q.icon }}>{q.type === QuadrantType.DELTA && <div className="w-2 h-2 bg-white rounded-full animate-pulse" />}</div><div className={`retro-font text-[9px] ${q.color} uppercase tracking-widest`}>{q.type}</div></button>))}</div>
+            <button onClick={() => setIsWarpDialogOpen(false)} className="w-full py-4 bg-red-500/5 text-red-400/80 border border-red-500/20 hover:bg-red-500/10 hover:border-red-500/40 transition-all retro-font text-[10px] uppercase rounded-lg shadow-lg">Abort Sequence</button>
           </div>
-        ))}
-      </div>
-      
-      <button 
-        onClick={() => { audioService.playSfx('click'); onReturn(); }} 
-        className="text-zinc-500 hover:text-white bg-zinc-900/30 px-10 py-4 border border-zinc-800 rounded retro-font text-[9px] uppercase transition-all mb-6 tracking-[0.2em] shrink-0"
-      >
-        Return to Hangar
-      </button>
-
-      <div className="fixed inset-0 pointer-events-none opacity-[0.02] bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.1),transparent)]" />
+        </div>
+      )}
+      {isLoading && <div className="fixed inset-0 z-[2000] bg-black/80 backdrop-blur-2xl flex items-center justify-center"><div className="retro-font text-emerald-500 text-xs animate-pulse tracking-[0.8em] uppercase">Synchronizing Fleet Uplink...</div></div>}
     </div>
   );
 };
 
-const StarfieldLayer = ({ stars, userOffset, localTime }: { stars: any[], userOffset: { x: number, y: number }, localTime: number }) => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const sizeRef = useRef({ w: 0, h: 0 });
+// --- MAP SCREEN COMPONENT ---
 
-  useEffect(() => {
-    const handleResize = () => {
-      if (canvasRef.current) {
-        canvasRef.current.width = window.innerWidth;
-        canvasRef.current.height = window.innerHeight;
-        sizeRef.current = { w: window.innerWidth, h: window.innerHeight };
-      }
-    };
-    handleResize();
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-  
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const { w, h } = sizeRef.current;
-    ctx.clearRect(0, 0, w, h);
-    
-    const centerX = w / 2;
-    const centerY = h / 2;
-
-    stars.forEach(s => {
-      const parallaxX = userOffset.x * s.depth;
-      const parallaxY = userOffset.y * s.depth;
-      
-      const rx = ((s.x - 50) * s.depth) + centerX + parallaxX;
-      const ry = ((s.y - 50) * s.depth) + centerY + parallaxY;
-      
-      if (rx > -5 && rx < w + 5 && ry > -5 && ry < h + 5) {
-        const flicker = 0.7 + 0.3 * Math.sin(localTime * 0.1 + s.flickerPeriod);
-        ctx.globalAlpha = s.opacity * flicker;
-        ctx.fillStyle = s.tint;
-        ctx.beginPath();
-        ctx.arc(rx, ry, s.sizePx, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    });
-  }, [stars, userOffset, localTime]);
-
-  return <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none" />;
-};
-
-const MapScreen = ({ planets, taskForceShipIds, activeTaskForceIndex, onSelectTaskForceShip, onArrival, onReturn, currentQuadrant, getShipFitting, isTaskForceVisible, isObjectListVisible, setIsTaskForceVisible, setIsObjectListVisible }: any) => {
+const MapScreen = ({ planets, onArrival, currentQuadrant, onOpenWarp, initialFocusId, pilotAvatar, pilotName, selectedShipId, shipColors, onReturnHome, autoDock }: any) => {
+  const [selectedEntityId, setSelectedEntityId] = useState<string | null>(initialFocusId || null);
+  const [camZoom, setCamZoom] = useState(0.01); 
+  const [camOffset, setCamOffset] = useState({ x: 100, y: 0 }); 
+  const [isScanning, setIsScanning] = useState(false);
   const [localTime, setLocalTime] = useState(0);
-  const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
-  
-  const [camZoom, setCamZoom] = useState(0.8);
-  const [targetZoom, setTargetZoom] = useState(0.8);
-  const [isAutoZooming, setIsAutoZooming] = useState(false);
-  const [userOffset, setUserOffset] = useState({ x: 0, y: 0 });
-  const [isPanning, setIsPanning] = useState(false);
-  
-  const cometCycle = 45000; 
-  const mapScale = 0.8; 
+  const [isIntroZooming, setIsIntroZooming] = useState(true);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const mapContainerRef = useRef<HTMLDivElement>(null);
 
-  const startTimeRef = useRef(performance.now());
-  const timeRef = useRef(0);
+  const radiusRange = useMemo(() => { if (planets.length === 0) return { min: 1, max: 1000 }; const r = planets.map((p: any) => p.orbitRadius); return { min: Math.min(...r), max: Math.max(...r) }; }, [planets]);
+  const planetOffsets = useMemo(() => { return planets.reduce((acc: any, p: any) => { acc[p.id] = { startAngle: Math.random() * Math.PI * 2, spinSpeed: (Math.random() * 2 + 1) * (Math.random() > 0.5 ? 1 : -1) }; return acc; }, {}); }, [planets]);
 
-  useEffect(() => {
-    let frameId: number;
-    const tick = (now: number) => {
-      const elapsed = now - startTimeRef.current;
-      timeRef.current = elapsed / 50; 
-      setLocalTime(timeRef.current);
-      frameId = requestAnimationFrame(tick);
-    };
-    frameId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frameId);
-  }, []);
+  const SUN_COLORS: Record<string, string> = { [QuadrantType.ALFA]: '#fbbf24', [QuadrantType.BETA]: '#f97316', [QuadrantType.GAMA]: '#60a5fa', [QuadrantType.DELTA]: '#000000' };
+  const currentSunColor = SUN_COLORS[currentQuadrant] || '#f97316';
+  const isDelta = currentQuadrant === QuadrantType.DELTA;
 
-  const sessionSeeds = useMemo(() => {
-    const seeds: Record<string, number> = {};
-    planets.forEach((p: Planet) => {
-      seeds[p.id] = Math.random() * Math.PI * 2;
-      p.moons.forEach(m => { seeds[m.id] = Math.random() * Math.PI * 2; });
-    });
-    seeds['comet_boss'] = Math.random() * cometCycle;
-    seeds['belt'] = Math.random() * 1000;
-    return seeds;
-  }, [currentQuadrant, planets]);
+  const normalizedTime = Date.now() / 1000;
+  const cycleDuration = 35;
+  const beamVisibleDuration = 10;
+  const jetActive = (normalizedTime % cycleDuration) < beamVisibleDuration;
+  const jetWobble = Math.sin(normalizedTime * 2) * 10; 
+  const baseRotation = 35; 
 
-  const sunSizePx = useMemo(() => {
-    if (currentQuadrant === QuadrantType.DELTA) return 160;
-    return currentQuadrant === QuadrantType.GAMA ? 128 : (currentQuadrant === QuadrantType.BETA ? 64 : 96);
-  }, [currentQuadrant]);
+  const SUN_OBJECT = { id: 'sun', name: isDelta ? 'SINGULARITY' : 'Sol Prime', description: isDelta ? 'A massive black hole consuming everything in its path.' : 'The massive star at the center of the sector.', status: 'neutral', size: 5.6, color: currentSunColor };
 
-  const planetMultiplier = useMemo(() => {
-    const maxP = Math.max(...planets.map((p: Planet) => p.size));
-    return (sunSizePx * 0.45) / maxP;
-  }, [planets, sunSizePx]);
-
-  const globalOrbitShift = useMemo(() => {
-    if (planets.length === 0) return 0;
-    const minRadius = Math.min(...planets.map((p: Planet) => p.orbitRadius));
-    return minRadius * 0.3;
-  }, [planets]);
-
-  const moonDiameterPx = useMemo(() => {
-    if (planets.length === 0) return 12;
-    const minPSize = Math.min(...planets.map((p: Planet) => p.size));
-    const smallestPlanetRadiusPx = (minPSize * planetMultiplier) / 2;
-    return Math.max(12, Math.floor(smallestPlanetRadiusPx * 0.66));
-  }, [planets, planetMultiplier]);
-
-  const safeMoonOrbits = useMemo(() => {
-    const map: Record<string, { id: string, safePx: number }[]> = {};
-    planets.forEach((p: Planet) => {
-      const pRadiusPx = (p.size * planetMultiplier) / 2;
-      const firstMoonOrbitRadius = pRadiusPx + (5 * moonDiameterPx);
-      const orbitSpacingPx = 2 * moonDiameterPx;
-      
-      map[p.id] = p.moons.map((m, idx) => {
-        const safePx = firstMoonOrbitRadius + (idx * orbitSpacingPx);
-        return { id: m.id, safePx };
-      });
-    });
-    return map;
-  }, [planets, planetMultiplier, moonDiameterPx]);
-
-  const getCometPos = useCallback((timeVal: number) => {
-    if (currentQuadrant !== QuadrantType.GAMA) return null;
-    const periRadius = 40 * mapScale; 
-    const apoRadius = 141 * mapScale; 
-    const a = (periRadius + apoRadius) / 2; 
-    const e = (apoRadius - periRadius) / (apoRadius + periRadius); 
-    const sessionOffset = sessionSeeds['comet_boss'] || 0;
-    const tMod = (timeVal * 1.5 + sessionOffset) % cometCycle;
-    const M = (tMod / cometCycle) * 2 * Math.PI;
-    let E = M;
-    for (let i = 0; i < 10; i++) { E = E - (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E)); }
-    const r = a * (1 - e * Math.cos(E));
-    const theta = 2 * Math.atan2(Math.sqrt(1 + e) * Math.sin(E / 2), Math.sqrt(1 - e) * Math.cos(E / 2));
-    const axisRotation = Math.PI * 1.35; 
-    const finalAngle = theta + axisRotation;
-    const wx = 50 + Math.cos(finalAngle) * r;
-    const wy = 50 + Math.sin(finalAngle) * r;
-    return { x: wx, y: wy, dist: r, angle: finalAngle, peri: periRadius, id: 'comet_boss', name: 'NEMESIS COMET' };
-  }, [currentQuadrant, sessionSeeds, mapScale]);
-
-  const getPlanetWorldPos = useCallback((planet: Planet, timeVal: number) => { 
-    if (!planet) return { x: 50, y: 50 }; 
-    const direction = planet.orbitDirection || 1; 
-    const startOffset = sessionSeeds[planet.id] || 0;
-    const shiftedBaseRadius = (planet.orbitRadius + globalOrbitShift) * mapScale;
-    const dynamicOrbitSpeed = planet.orbitSpeed * (22 / Math.sqrt(shiftedBaseRadius / mapScale));
-    const angle = (timeVal * dynamicOrbitSpeed * direction) + startOffset; 
-    return { x: 50 + Math.cos(angle) * shiftedBaseRadius, y: 50 + Math.sin(angle) * shiftedBaseRadius }; 
-  }, [globalOrbitShift, sessionSeeds, mapScale]);
-
-  const getMoonWorldPos = useCallback((planetPos: { x: number, y: number }, moon: Moon, planetId: string, timeVal: number) => {
-    const direction = moon.orbitDirection || 1;
-    const startOffset = sessionSeeds[moon.id] || 0;
-    const safeData = safeMoonOrbits[planetId]?.find(sm => sm.id === moon.id);
-    const orbitRadiusPx = (safeData?.safePx || 40) * mapScale;
-    
-    // speed inversely proportional to radius for slightly more realistic feel
-    const dynamicMoonSpeed = (0.5 / Math.sqrt(orbitRadiusPx)) * 0.3;
-    const angle = (timeVal * dynamicMoonSpeed * direction) + startOffset;
-    
-    // 10 is the magic factor to convert pixel radii to 0-100 map percentage units safely
-    return { 
-      x: planetPos.x + (Math.cos(angle) * orbitRadiusPx) / 10, 
-      y: planetPos.y + (Math.sin(angle) * orbitRadiusPx) / 10 
-    };
-  }, [safeMoonOrbits, sessionSeeds, mapScale]);
-
-  const getTargetWorldPos = useCallback((id: string | null, timeVal: number) => {
-    if (!id || id === 'sun') return { x: 50, y: 50 };
-    if (id === 'comet_boss') {
-      const c = getCometPos(timeVal);
-      return c ? { x: c.x, y: c.y } : { x: 50, y: 50 };
-    }
-    const planet = planets.find((p: any) => p.id === id);
-    if (planet) return getPlanetWorldPos(planet, timeVal);
-    const moon = planets.flatMap((p: any) => p.moons).find((m: any) => m.id === id);
-    if (moon) {
-      const parent = planets.find((p: any) => p.moons.some((m: any) => m.id === moon.id));
-      if (parent) {
-        const pPos = getPlanetWorldPos(parent, timeVal);
-        return getMoonWorldPos(pPos, moon, parent.id, timeVal);
-      }
-    }
-    return { x: 50, y: 50 };
-  }, [planets, getCometPos, getPlanetWorldPos, getMoonWorldPos]);
-
-  const cometData = useMemo(() => getCometPos(localTime), [localTime, getCometPos]);
-
-  const asteroidBelt = useMemo(() => {
-    if (currentQuadrant !== QuadrantType.GAMA) return [];
-    const count = 150;
-    const inner = 130 * mapScale;
-    const outer = 210 * mapScale;
-    return Array.from({ length: count }).map((_, i) => {
-      const angle = (i / count) * Math.PI * 2 + (Math.random() * 0.1);
-      const dist = inner + Math.random() * (outer - inner);
-      const size = 1.5 + Math.random() * 3.5;
-      const seed = Math.random() * 1000;
-      return { angle, dist, size, seed };
-    });
-  }, [currentQuadrant, mapScale]);
-
-  const minZoomLevel = 8 / sunSizePx;
-
-  const handleManualZoom = useCallback((delta: number) => {
-    setIsAutoZooming(false);
-    setCamZoom(prev => Math.max(minZoomLevel, Math.min(12.0, prev * (delta > 0 ? 0.82 : 1.22))));
-  }, [minZoomLevel]);
-
-  const selectEntity = useCallback((id: string | null) => {
-    audioService.playSfx('click');
-    setSelectedEntityId(id);
-    
-    if (!id || id === 'sun') {
-      setTargetZoom(0.8);
-    } else {
-      const targetPos = getTargetWorldPos(id, timeRef.current);
-      const distFromCenter = Math.hypot(targetPos.x - 50, targetPos.y - 50);
-      const screenRadiusRatio = 35; 
-      setTargetZoom(Math.max(minZoomLevel, Math.min(12.0, screenRadiusRatio / distFromCenter)));
-    }
-    setIsAutoZooming(true);
-  }, [getTargetWorldPos, planets, sunSizePx, minZoomLevel]);
+  useEffect(() => { const interval = setInterval(() => setLocalTime(t => t + 0.018), 16); return () => clearInterval(interval); }, []);
 
   useEffect(() => {
-    let frameId: number;
-    const tick = () => {
-      if (isAutoZooming) {
-        setCamZoom(prev => {
-          const next = prev + (targetZoom - prev) * 0.08;
-          if (Math.abs(targetZoom - next) < 0.001) { setIsAutoZooming(false); return targetZoom; }
-          return next;
-        });
-      }
-      frameId = requestAnimationFrame(tick);
+    const startZoom = 0.0625;
+    const targetZoom = 0.15625; 
+    setCamZoom(startZoom);
+    setCamOffset({ x: 100, y: 50 });
+    let start = Date.now();
+    const duration = 3000;
+    const animate = () => {
+      let now = Date.now();
+      let progress = Math.min((now - start) / duration, 1);
+      let easeProgress = 1 - Math.pow(1 - progress, 3);
+      setCamZoom(startZoom + easeProgress * (targetZoom - startZoom));
+      setCamOffset({ x: 100 * (1 - easeProgress), y: 50 * (1 - easeProgress) });
+      if (progress < 1) requestAnimationFrame(animate);
+      else { setIsIntroZooming(false); if (autoDock && initialFocusId) setTimeout(focusAndDock, 800); }
     };
-    frameId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frameId);
-  }, [isAutoZooming, targetZoom]);
+    animate();
+  }, [currentQuadrant, autoDock]);
 
-  const selectedEntity = useMemo(() => {
-    if (selectedEntityId === 'sun') return { id: 'sun', name: currentQuadrant === QuadrantType.DELTA ? 'CORE SINGULARITY' : 'SOLAR CORE' };
-    if (selectedEntityId === 'comet_boss') return cometData;
-    return planets.find((p: any) => p.id === selectedEntityId) || planets.flatMap((p: any) => p.moons).find((m: any) => m.id === selectedEntityId);
-  }, [selectedEntityId, planets, cometData, currentQuadrant]);
+  const selectedEntity = useMemo(() => { if (selectedEntityId === 'sun') return SUN_OBJECT; return planets.find((p: any) => p.id === selectedEntityId); }, [selectedEntityId, planets, currentQuadrant, SUN_OBJECT]);
+  const selectEntity = (id: string | null) => { if (isIntroZooming) return; audioService.playSfx('click'); setSelectedEntityId(id); };
 
-  const stars = useMemo(() => {
-    return Array.from({ length: 2500 }).map((_, i) => ({
-      x: Math.random() * 20000 - 10000, 
-      y: Math.random() * 20000 - 10000,
-      sizePx: Math.random() * 1.5 + 0.5,
-      opacity: Math.random() * 0.6 + 0.2,
-      depth: 0.05 + Math.pow(Math.random(), 2) * 0.95, 
-      tint: Math.random() > 0.9 ? '#93c5fd' : (Math.random() > 0.95 ? '#fca5a5' : '#ffffff'),
-      flickerPeriod: Math.random() * 20 + 10 
-    }));
-  }, []);
+  const getPlanetOrbitData = useCallback((p: any) => {
+    const offsets = planetOffsets[p.id] || { startAngle: 0 };
+    const distFactor = radiusRange.max === radiusRange.min ? 1 : (radiusRange.max - p.orbitRadius) / (radiusRange.max - radiusRange.min);
+    const speedMultiplier = 1.0 + (0.5 * distFactor);
+    const angle = localTime * (p.orbitSpeed * 4.32 * speedMultiplier) * (p.orbitDirection || 1) + offsets.startAngle;
+    return { x: Math.cos(angle) * p.orbitRadius * 6, y: Math.sin(angle) * p.orbitRadius * 6, angle };
+  }, [localTime, planetOffsets, radiusRange]);
 
-  const getSelectionStyles = (objectRadiusMapUnits: number) => {
-    const visualRadiusPixels = (objectRadiusMapUnits * camZoom);
-    const finalVisualRadius = Math.max(8, visualRadiusPixels + 6);
-    const mapWidthHeight = (finalVisualRadius * 2) / camZoom;
+  const focusOnSelected = useCallback(() => {
+    if (!selectedEntity) return;
+    let x = 0, y = 0;
+    if (selectedEntity.id !== 'sun') { const data = getPlanetOrbitData(selectedEntity); x = data.x; y = data.y; }
+    const targetZoom = Math.min(2.5, 60 / (selectedEntity.size * 25));
+    let startZoom = camZoom; let startX = camOffset.x; let startY = camOffset.y; let start = Date.now(); const dur = 1000;
+    const anim = () => { let elapsed = Date.now() - start; let p = Math.min(elapsed / dur, 1); let e = 1 - Math.pow(1 - p, 4); setCamZoom(startZoom + e * (targetZoom - startZoom)); setCamOffset({ x: startX + e * (-x - startX), y: startY + e * (-y - startY) }); if (p < 1) requestAnimationFrame(anim); };
+    anim();
+  }, [selectedEntity, camZoom, camOffset, getPlanetOrbitData]);
 
-    return {
-      width: mapWidthHeight + 'px',
-      height: mapWidthHeight + 'px',
-      borderWidth: (2 / camZoom) + 'px' 
-    };
-  };
+  const focusAndDock = () => { if (!initialFocusId) return; const ent = planets.find((p: any) => p.id === initialFocusId); if (ent) { setSelectedEntityId(initialFocusId); focusOnSelected(); setTimeout(() => onArrival(ent), 1500); } };
+  const resetView = () => { if (isIntroZooming) return; setCamZoom(0.15625); setCamOffset({ x: 0, y: 0 }); setSelectedEntityId(null); };
+
+  const handleMouseDown = (e: React.MouseEvent) => { if (isIntroZooming) return; const target = e.target as HTMLElement; if (target.closest('.clickable-body')) { if (selectedEntityId) { setIsDragging(true); setDragStart({ x: e.clientX, y: e.clientY }); } } };
+  const handleMouseMove = (e: React.MouseEvent) => { if (!isDragging) return; const dx = (e.clientX - dragStart.x) / camZoom; const dy = (e.clientY - dragStart.y) / camZoom; setCamOffset(prev => ({ x: prev.x + dx, y: prev.y + dy })); setDragStart({ x: e.clientX, y: e.clientY }); };
+  const handleMouseUp = () => setIsDragging(false);
+
+  const scrollRange = 1000; const hScrollPos = ((camOffset.x + scrollRange) / (scrollRange * 2)) * 100; const vScrollPos = ((camOffset.y + scrollRange) / (scrollRange * 2)) * 100;
+  const handleHScroll = (e: React.ChangeEvent<HTMLInputElement>) => { const val = parseFloat(e.target.value); setCamOffset(prev => ({ ...prev, x: (val / 100) * (scrollRange * 2) - scrollRange })); };
+  const handleVScroll = (e: React.ChangeEvent<HTMLInputElement>) => { const val = parseFloat(e.target.value); setCamOffset(prev => ({ ...prev, y: (val / 100) * (scrollRange * 2) - scrollRange })); };
 
   return (
-    <div 
-      className={`w-full h-full flex flex-col items-center relative overflow-hidden transition-colors duration-1000 ${currentQuadrant === QuadrantType.DELTA ? 'bg-[#010102]' : 'bg-[#020204]'}`}
-      onMouseMove={(e) => { if (!isPanning) return; setUserOffset(prev => ({ x: prev.x + e.movementX, y: prev.y + e.movementY })); }}
-      onMouseUp={() => setIsPanning(false)}
-      onMouseLeave={() => setIsPanning(false)}
-    >
-      <StarfieldLayer stars={stars} userOffset={userOffset} localTime={localTime} />
-
-      <div 
-        className={`absolute inset-0 flex items-center justify-center transition-transform duration-75 ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
-        onMouseDown={() => { setIsPanning(true); setSelectedEntityId(null); setIsAutoZooming(false); }}
-        onWheel={(e) => handleManualZoom(e.deltaY)}
-        style={{ transform: `translate(${userOffset.x}px, ${userOffset.y}px) scale(${camZoom})` }}
-      >
-        <div className="relative w-full h-full max-w-[12000px] aspect-square flex items-center justify-center">
-            {asteroidBelt.map((ast, idx) => {
-               const ax = Math.cos(ast.angle + (localTime * 0.0001)) * ast.dist;
-               const ay = Math.sin(ast.angle + (localTime * 0.0001)) * ast.dist;
-               return (
-                 <div key={idx} className="absolute rounded-[40%] bg-[#3f3f46]/40 blur-[0.5px]" style={{ left: (50+ax)+'%', top: (50+ay)+'%', width: ast.size+'px', height: ast.size*0.8+'px', transform: `translate(-50%, -50%) rotate(${ast.seed}deg)` }} />
-               );
-            })}
-
-            {/* Solar Core */}
-            {(() => {
-              const isSelected = selectedEntityId === 'sun';
-              if (currentQuadrant === QuadrantType.DELTA) {
-                return (
-                  <div onClick={(e) => { e.stopPropagation(); selectEntity('sun'); }} className="absolute z-10 cursor-pointer" style={{ left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: sunSizePx+'px', height: sunSizePx+'px' }}>
-                    <div className="absolute inset-0 rounded-full bg-black shadow-[0_0_60px_rgba(139,92,246,0.8)] border border-purple-900/40" />
-                    <div className="absolute inset-[-10%] rounded-full animate-spin-slow opacity-70" style={{ background: 'conic-gradient(from 0deg, transparent, #a855f7, transparent, #3b82f6, transparent)', filter: 'blur(12px)' }} />
-                    <div className="absolute inset-[10%] rounded-full bg-black z-20" />
-                    {isSelected && <div className="absolute top-1/2 left-1/2 border-sky-400 border-dashed rounded-full animate-rotate-dashed" style={getSelectionStyles(sunSizePx/2)} />}
-                  </div>
-                );
-              }
-              const sunColors: Record<string, string> = { [QuadrantType.BETA]: '#ef4444', [QuadrantType.GAMA]: '#7dd3fc', [QuadrantType.ALFA]: '#facc15' };
-              return (
-                <div onClick={(e) => { e.stopPropagation(); selectEntity('sun'); }} className={`absolute z-10 rounded-full blur-[2px] cursor-pointer transition-all ${isSelected ? 'scale-100' : 'hover:scale-105'}`} style={{ left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: sunSizePx+'px', height: sunSizePx+'px', backgroundColor: sunColors[currentQuadrant] || '#facc15', boxShadow: `0 0 ${sunSizePx}px ${sunColors[currentQuadrant] || '#facc15'}` }}>
-                    {isSelected && <div className="absolute top-1/2 left-1/2 border-sky-400 border-dashed rounded-full animate-rotate-dashed" style={getSelectionStyles(sunSizePx/2)} />}
-                </div>
-              );
-            })()}
-
-            {cometData && (
-              (() => {
-                const pressure = Math.pow((cometData.peri || 40) / cometData.dist, 1.2);
-                const tailLength = Math.min(500, 100 + (1800 * Math.pow(pressure, 2.0))); 
-                const tailWidth = 16 + (30 * pressure); 
-                const angle = (cometData.angle * 180) / Math.PI;
-                const isSelected = selectedEntityId === 'comet_boss';
-
-                return (
-                  <div 
-                    onClick={(e) => { e.stopPropagation(); selectEntity('comet_boss'); }}
-                    className="absolute z-40 cursor-pointer" 
-                    style={{ left: cometData.x + '%', top: cometData.y + '%', transform: 'translate(-50%, -50%)' }}
-                  >
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none" style={{ opacity: Math.max(0.1, pressure) }}>
-                      <div className="absolute top-1/2 left-1/2 origin-left blur-[15px]" style={{ 
-                        width: tailLength + 'px', 
-                        height: tailWidth * 3.5 + 'px', 
-                        background: 'radial-gradient(ellipse at left, rgba(254, 240, 138, 0.45), transparent)', 
-                        transform: `translate(0, -50%) rotate(${angle}deg)`,
-                        borderRadius: '50% 0 0 50%'
-                      }} />
-                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full blur-[12px]" style={{ width: tailWidth * 5 + 'px', height: tailWidth * 5 + 'px', background: 'radial-gradient(circle, rgba(254, 240, 138, 0.3), transparent)' }} />
-                    </div>
-                    <div className="w-4 h-4 bg-yellow-400 rounded-full shadow-[0_0_30px_#facc15] relative">
-                      {isSelected && <div className="absolute top-1/2 left-1/2 border-sky-400 border-dashed rounded-full animate-rotate-dashed" style={getSelectionStyles(8)} />}
-                    </div>
-                  </div>
-                );
-              })()
-            )}
-            
-            {planets.map((p: any) => { 
-               const worldPos = getPlanetWorldPos(p, localTime); 
-               const isSelected = selectedEntityId === p.id;
-               const pRadius = (p.size * planetMultiplier) / 2;
-
-               return ( 
-                 <React.Fragment key={p.id}>
-                    {p.atmosphereColor && (
-                      <div className="absolute z-19 rounded-full blur-md opacity-40 pointer-events-none" style={{ width: (pRadius * 3)+'px', height: (pRadius * 3)+'px', left: worldPos.x+'%', top: worldPos.y+'%', backgroundColor: p.atmosphereColor, transform: 'translate(-50%, -50%)' }} />
-                    )}
-
-                    <div onClick={(e)=> { e.stopPropagation(); selectEntity(p.id); }} className={`absolute z-20 rounded-full border-2 border-white/10 cursor-pointer transition-all ${isSelected ? 'scale-100 border-transparent' : 'hover:border-white/40 hover:scale-110'}`} style={{ width: (pRadius * 2)+'px', height: (pRadius * 2)+'px', left: worldPos.x+'%', top: worldPos.y+'%', backgroundColor: p.color, transform: 'translate(-50%, -50%)' }}>
-                        {isSelected && <div className="absolute top-1/2 left-1/2 border-sky-400 border-dashed rounded-full animate-rotate-dashed" style={getSelectionStyles(pRadius)} />}
-                    </div>
-                    {p.moons.map((m: Moon) => {
-                      const worldMoonPos = getMoonWorldPos(worldPos, m, p.id, localTime);
-                      const isMoonSelected = selectedEntityId === m.id;
-                      const mRadius = moonDiameterPx / 2;
-
-                      return (
-                        <div key={m.id} onClick={(e) => { e.stopPropagation(); selectEntity(m.id); }} className={`absolute z-30 rounded-full border border-white/20 cursor-pointer transition-all ${isMoonSelected ? 'scale-100 border-transparent' : 'hover:border-white/50'}`} style={{ left: worldMoonPos.x+'%', top: worldMoonPos.y+'%', width: moonDiameterPx + 'px', height: moonDiameterPx + 'px', backgroundColor: m.color || '#94a3b8', transform: 'translate(-50%, -50%)' }}>
-                            {isMoonSelected && <div className="absolute top-1/2 left-1/2 border-sky-400 border-dashed rounded-full animate-rotate-dashed" style={getSelectionStyles(mRadius)} />}
-                        </div>
-                      );
-                    })}
-                 </React.Fragment> 
-               ); 
-             })}
-        </div>
-      </div>
-
-      <div className="absolute top-6 left-6 flex flex-col gap-2 z-[50]">
-        <button onClick={() => handleManualZoom(-1)} className="w-10 h-10 bg-zinc-900/80 border border-zinc-700 flex items-center justify-center text-emerald-400 hover:bg-zinc-800 rounded font-bold transition-colors shadow-lg">+</button>
-        <button onClick={() => handleManualZoom(1)} className="w-10 h-10 bg-zinc-900/80 border border-zinc-700 flex items-center justify-center text-emerald-400 hover:bg-zinc-800 rounded font-bold transition-colors shadow-lg">-</button>
-        <button onClick={() => { setCamZoom(0.6); setTargetZoom(0.6); setIsAutoZooming(false); setUserOffset({x:0, y:0}); setSelectedEntityId(null); audioService.playSfx('click'); }} className="w-10 h-10 bg-zinc-900/80 border border-zinc-700 flex items-center justify-center text-emerald-400 hover:bg-zinc-800 rounded transition-colors shadow-lg" title="Reset Camera">
-          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
-        </button>
-      </div>
-
-      <div className="absolute top-6 bottom-6 right-6 w-72 md:w-80 flex flex-col gap-4 z-[50]">
-        {isObjectListVisible && (
-          <div className="flex-grow bg-zinc-950/80 border border-zinc-800 p-5 rounded backdrop-blur-md shadow-2xl flex flex-col overflow-hidden relative animate-in slide-in-from-right duration-300">
-            <div className="flex justify-between items-center mb-4 shrink-0">
-              <h3 className="retro-font text-[9px] text-emerald-400 uppercase tracking-widest text-left">{currentQuadrant} SECTOR</h3>
-              <button onClick={() => setIsObjectListVisible(false)} className="w-6 h-6 bg-zinc-800/80 hover:bg-red-900/40 text-zinc-500 hover:text-white flex items-center justify-center text-[10px] retro-font rounded border border-zinc-700 transition-colors">X</button>
-            </div>
-            <div className="flex-grow overflow-y-auto custom-scrollbar space-y-1">
-              <div onClick={() => selectEntity('sun')} className={`p-2.5 rounded text-[9px] font-mono uppercase cursor-pointer transition-all flex justify-between items-center border ${selectedEntityId === 'sun' ? 'bg-sky-500/20 text-sky-400 border-sky-500/30' : 'text-zinc-500 border-transparent hover:text-zinc-300 hover:bg-zinc-800/50'}`}>
-                  <span>{currentQuadrant === QuadrantType.DELTA ? 'CORE SINGULARITY' : 'SOLAR CORE'}</span>
-                  <span className="text-sky-600">CORE</span>
+    <div className="flex-grow w-full relative bg-[#010103] flex items-center justify-center overflow-hidden" onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}>
+      <Starfield count={300} isFixed />
+      <div ref={mapContainerRef} onMouseDown={handleMouseDown} className={`absolute inset-0 transition-transform duration-[400ms] cubic-bezier(0.4, 0, 0.2, 1) flex items-center justify-center ${isDragging ? 'cursor-grabbing' : 'cursor-crosshair'}`} style={{ transform: `scale(${camZoom}) translate(${camOffset.x}px, ${camOffset.y}px)` }}>
+        <div className="relative w-full h-full flex items-center justify-center pointer-events-auto">
+            <div className="relative z-10 flex items-center justify-center pointer-events-none sun-container">
+              {selectedEntityId === 'sun' && (<div className="absolute border-2 border-dashed border-emerald-400 rounded-full pointer-events-none" style={{ width: '156px', height: '156px', transform: `rotate(${localTime * 5}deg)`, zIndex: 20 }} />)}
+              {isDelta && jetActive && (<div className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ transform: `rotate(${baseRotation + jetWobble}deg)`, zIndex: 15 }}><div className="absolute w-2 h-[800px] bg-gradient-to-t from-blue-400 via-blue-200 to-transparent shadow-[0_0_60px_#60a5fa] blur-[1px] opacity-100 origin-bottom" style={{ bottom: '50%', marginBottom: '45px' }} /><div className="absolute w-2 h-[800px] bg-gradient-to-b from-blue-400 via-blue-200 to-transparent shadow-[0_0_60px_#60a5fa] blur-[1px] opacity-100 origin-top" style={{ top: '50%', marginTop: '45px' }} /></div>)}
+              <div className={`clickable-body w-32 h-32 md:w-40 md:h-40 rounded-full flex items-center justify-center cursor-pointer pointer-events-auto transition-all ${selectedEntityId === 'sun' ? 'cursor-grab' : 'hover:scale-105'}`} onClick={(e) => { e.stopPropagation(); selectEntity('sun'); }} style={{ backgroundColor: isDelta ? '#000' : currentSunColor, boxShadow: isDelta ? `0 0 120px rgba(255,140,0,0.3), 0 0 50px rgba(96,165,250,0.15), inset 0 0 80px rgba(255,255,255,0.08)` : `0 0 180px ${currentSunColor}, 0 0 60px white, 0 0 300px ${currentSunColor}44` }}>
+                {isDelta && <div className="absolute w-[350%] h-[60%] bg-[radial-gradient(ellipse_at_center,rgba(255,165,0,0.25)_0%,transparent_70%)] blur-3xl animate-spin-slow opacity-90" style={{ animationDuration: '18s' }} />}
+                {isDelta && <div className="absolute w-[220%] h-[220%] bg-[conic-gradient(from_0deg,transparent_0%,rgba(255,165,0,0.1)_50%,transparent_100%)] opacity-35 animate-spin" style={{ animationDuration: '8s' }} />}
+                <div className="w-full h-full rounded-full animate-pulse bg-[radial-gradient(circle_at_30%_30%,rgba(255,255,255,0.7)_0%,transparent_70%)] opacity-20" />
               </div>
-
-              {cometData && (
-                <div onClick={() => selectEntity('comet_boss')} className={`p-2.5 rounded text-[9px] font-mono uppercase cursor-pointer transition-all flex justify-between items-center border ${selectedEntityId === 'comet_boss' ? 'bg-red-500/20 text-red-400 border-red-500/30' : 'text-zinc-500 border-transparent hover:text-zinc-300 hover:bg-red-900/20'}`}>
-                  <span>NEMESIS COMET</span>
-                  <span className="text-red-600">BOSS</span>
-                </div>
-              )}
-              {planets.map((p: Planet) => (
-                <div key={p.id}>
-                  <div onClick={() => selectEntity(p.id)} className={`p-2.5 rounded text-[9px] font-mono uppercase cursor-pointer transition-all flex justify-between items-center ${selectedEntityId === p.id ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50'}`}>
-                    <span>{p.name}</span>
-                    <span className={p.difficulty > 5 ? 'text-red-500' : 'text-emerald-600'}>LV.{p.difficulty}</span>
-                  </div>
-                </div>
-              ))}
             </div>
-          </div>
-        )}
-
-        <div className="shrink-0 space-y-4">
-          {selectedEntity && (
-            <div className="bg-zinc-950/80 border border-zinc-800 p-5 rounded backdrop-blur-md shadow-2xl animate-in slide-in-from-right duration-300 text-left">
-               <span className="text-[7px] font-mono text-zinc-600 uppercase tracking-widest block mb-2">Tactical Intelligence</span>
-               <h4 className="retro-font text-xs text-white mb-2 uppercase">{selectedEntity.name || "Unknown Signature"}</h4>
-               <p className="text-[9px] font-mono text-zinc-400 leading-relaxed uppercase">
-                 {selectedEntityId === 'sun' ? 'THE CENTRAL MASS OF THE SECTOR. HIGH GRAVITY ALERT. MISSION DEPLOYMENT IMPOSSIBLE.' : 
-                  selectedEntityId === 'comet_boss' ? 'PRIMARY BOSS THREAT. COLLISION PATH DETECTED. NEUTRALIZE BEFORE SECTOR ESCAPE.' : 
-                  ('description' in selectedEntity ? (selectedEntity as Planet).description : `Orbital satellite of ${planets.find((p:any) => p.moons.some((m:any) => m.id === selectedEntity.id))?.name}.`)}
-               </p>
-            </div>
-          )}
-          <div className="flex gap-4">
-            <button onClick={onReturn} className="flex-1 py-4 bg-zinc-900/90 border-2 border-zinc-800 text-zinc-500 hover:text-white rounded retro-font text-[9px] uppercase transition-all tracking-widest shadow-xl">RETURN</button>
-            <button disabled={!selectedEntityId || selectedEntityId === 'sun' || taskForceShipIds.length === 0} onClick={() => onArrival(selectedEntity)} className={`flex-1 py-4 rounded retro-font text-[9px] uppercase transition-all tracking-widest border-b-4 shadow-xl ${selectedEntityId && selectedEntityId !== 'sun' && taskForceShipIds.length > 0 ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-800 active:translate-y-1' : 'bg-zinc-800 text-zinc-600 border-zinc-950 opacity-40 cursor-not-allowed'}`} > ENGAGE </button>
-          </div>
+            {planets.map((p: any) => {
+              const { x, y } = getPlanetOrbitData(p);
+              const offsets = planetOffsets[p.id] || { spinSpeed: 0 };
+              const selfRotation = localTime * offsets.spinSpeed * 20;
+              const visualSize = p.size * 25;
+              const isSelected = selectedEntityId === p.id;
+              return (
+                <React.Fragment key={p.id}>
+                    <div className="absolute border border-white/5 rounded-full pointer-events-none" style={{ width: p.orbitRadius * 12 + 'px', height: p.orbitRadius * 12 + 'px' }} />
+                    <div className="absolute z-20 pointer-events-none planet-container" style={{ transform: `translate(${x}px, ${y}px) translate(-50%, -50%)` }}>
+                      {isSelected && (<div className="absolute border-2 border-dashed border-emerald-400 rounded-full" style={{ width: (visualSize + 16) + 'px', height: (visualSize + 16) + 'px', top: '50%', left: '50%', transform: `translate(-50%, -50%) rotate(${localTime * 10}deg)`, zIndex: 20 }} />)}
+                      {p.moons && p.moons.map((m: any, idx: number) => {
+                        // Moon Speed Logic: 1st slow 50%, 2nd slow 80%, 3rd slow 100%
+                        const baseMoonSpeed = 4.0;
+                        let speedMultiplier = 1.0;
+                        if (idx === 0) speedMultiplier = 0.5;
+                        else if (idx === 1) speedMultiplier = 0.2;
+                        else if (idx === 2) speedMultiplier = 0.0;
+                        const moonAngle = localTime * baseMoonSpeed * speedMultiplier * (m.orbitDirection || 1) + (m.angle * (Math.PI / 180));
+                        const mx = Math.cos(moonAngle) * m.distance;
+                        const my = Math.sin(moonAngle) * m.distance;
+                        const moonVisualSize = m.size * 25;
+                        return (
+                          <React.Fragment key={m.id}>
+                            <div className="absolute border border-white/5 rounded-full" style={{ width: m.distance * 2 + 'px', height: m.distance * 2 + 'px', top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }} />
+                            <div className="absolute rounded-full border border-black/30" style={{ width: moonVisualSize + 'px', height: moonVisualSize + 'px', backgroundColor: m.color || '#94a3b8', left: '50%', top: '50%', transform: `translate(-50%, -50%) translate(${mx}px, ${my}px)`, boxShadow: 'inset -2px -2px 5px rgba(0,0,0,0.5)' }} />
+                          </React.Fragment>
+                        );
+                      })}
+                      <div onClick={(e) => { e.stopPropagation(); selectEntity(p.id); }} className={`clickable-body relative rounded-full cursor-pointer transition-all border-2 overflow-hidden pointer-events-auto ${isSelected ? 'border-emerald-400 cursor-grab' : 'border-transparent hover:border-white/40'}`} style={{ width: visualSize + 'px', height: visualSize + 'px', backgroundColor: p.color, boxShadow: isSelected ? '0 0 40px rgba(16, 185, 129, 0.4)' : '0 0 15px rgba(0,0,0,0.6)' }}>
+                          <div className="absolute inset-0 opacity-40" style={{ background: 'repeating-linear-gradient(45deg, rgba(0,0,0,0.15), rgba(0,0,0,0.15) 10px, rgba(255,255,255,0.08) 10px, rgba(255,255,255,0.08) 20px)', transform: `rotate(${selfRotation}deg)` }} />
+                          <div className="absolute inset-0 shadow-[inset_-6px_-6px_20px_rgba(0,0,0,0.6),inset_6px_6px_15px_rgba(255,255,255,0.25)]" />
+                          {p.hasRings && <div className="absolute inset-[-65%] border-4 border-zinc-400/20 rounded-full rotate-[35deg] shadow-[0_0_20px_rgba(255,255,255,0.05)]" />}
+                      </div>
+                    </div>
+                </React.Fragment>
+              );
+            })}
         </div>
       </div>
-      <div className="absolute inset-0 pointer-events-none opacity-[0.03] bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] bg-[length:100%_2px,3px_100%]" />
-    </div>
-  );
-};
-
-const BriefingScreen = ({ isLoading, briefing, planet, moon, type, onAbort, onLaunch }: any) => {
-  return (
-    <div className="w-full h-full flex items-center justify-center bg-black p-6 relative overflow-hidden">
-      <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] pointer-events-none"></div>
-      <div className="max-w-3xl w-full bg-zinc-900 border-2 border-zinc-700 rounded-lg shadow-[0_0_50px_rgba(0,0,0,0.8)] overflow-hidden animate-in zoom-in-95 duration-300 flex flex-col">
-        <div className="bg-zinc-800 border-b border-zinc-700 p-4 flex justify-between items-center">
-          <div className="flex flex-col text-left">
-             <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Mission Protocol</span>
-             <h2 className="retro-font text-xl text-emerald-400 uppercase tracking-widest">{type === MissionType.COMET ? 'COMET INTERCEPT' : type}</h2>
-          </div>
-          <div className="text-right">
-             <span className="text-[10px] font-mono text-zinc-500 uppercase">Targeting</span>
-             <div className="retro-font text-xs text-white uppercase">{type === MissionType.COMET ? 'NEMESIS COMET' : (moon ? moon.name : planet?.name)}</div>
-          </div>
-        </div>
-        <div className="p-8 flex-grow space-y-8 flex flex-col min-h-0">
-          <div className="flex gap-8 items-start">
-             <div className="w-32 h-32 rounded-full border-4 border-emerald-500/20 bg-black flex items-center justify-center shrink-0 relative overflow-hidden">
-                <div className="w-24 h-24 rounded-full shadow-[0_0_30px_rgba(16,185,129,0.3)] animate-pulse" style={{ backgroundColor: type === MissionType.COMET ? '#fff' : (moon?.color || planet?.color || '#3b82f6') }} />
-                <div className="absolute inset-0 border border-emerald-500/10 rounded-full animate-spin-slow" />
-             </div>
-             <div className="flex-grow space-y-4 text-left">
-                <div className="grid grid-cols-2 gap-4">
-                   <div className="p-3 bg-black/40 border border-zinc-800 rounded">
-                      <span className="text-[8px] font-mono text-zinc-500 uppercase block mb-1">Environment</span>
-                      <span className="text-[10px] retro-font text-white uppercase">{type === MissionType.COMET ? 'PLASMA' : 'Volatile'}</span>
-                   </div>
-                   <div className="p-3 bg-black/40 border border-zinc-800 rounded">
-                      <span className="text-[8px] font-mono text-zinc-500 uppercase block mb-1">Target Priority</span>
-                      <span className="text-[10px] retro-font text-white uppercase">{type === MissionType.COMET ? 'BOSS - MAX' : 'STANDARD'}</span>
-                   </div>
-                </div>
-                <div className="p-4 bg-emerald-950/20 border border-emerald-900/50 rounded">
-                   <p className="text-[11px] font-mono text-emerald-400 italic uppercase">"Priority directive: Neutralize target nucleus. The Earth Union cannot afford its sector escape."</p>
-                </div>
-             </div>
-          </div>
-          <div className="p-6 bg-black/60 border border-zinc-800 rounded-lg flex-grow overflow-y-auto custom-scrollbar">
-             <h3 className="retro-font text-[10px] text-zinc-500 mb-4 uppercase tracking-[0.3em] border-b border-zinc-800 pb-2 text-left">Briefing Intelligence</h3>
-             {isLoading ? (
-               <div className="h-24 flex flex-col items-center justify-center gap-4">
-                  <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-                  <span className="text-[10px] retro-font text-emerald-600 uppercase animate-pulse">Decrypting Signal...</span>
-               </div>
-             ) : (
-               <p className="font-mono text-[13px] text-zinc-300 leading-relaxed uppercase animate-in fade-in slide-in-from-bottom-2 duration-700 text-left"> {briefing || "Communication error. Confirm mission parameters and engage immediately."} </p>
-             )}
-          </div>
-        </div>
-        <div className="p-6 bg-zinc-800/50 border-t border-zinc-700 grid grid-cols-2 gap-4">
-           <button onClick={() => { audioService.playSfx('click'); onAbort(); }} className="py-4 bg-zinc-900 border-2 border-zinc-700 text-zinc-500 hover:text-white rounded retro-font text-[10px] uppercase transition-all tracking-widest shadow-xl">Abort Mission</button>
-           <button onClick={() => { audioService.playSfx('click'); onLaunch(); }} className="py-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded retro-font text-[11px] uppercase tracking-[0.3em] border-b-4 border-emerald-900 transition-all shadow-xl active:translate-y-1">Launch Attack</button>
-        </div>
-      </div>
-      <div className="absolute inset-0 pointer-events-none opacity-[0.05] bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] bg-[length:100%_2px,3px_100%]" />
-    </div>
-  );
-};
-
-const ResultsScreen = ({ result, onReturn }: any) => {
-  return (
-    <div className="w-full h-full flex items-center justify-center bg-black p-6">
-       <div className={`max-w-xl w-full bg-zinc-900 border-4 ${result.success ? 'border-emerald-500 shadow-[0_0_50px_rgba(16,185,129,0.3)]' : 'border-red-600 shadow-[0_0_50px_rgba(220,38,38,0.3)]'} rounded-lg p-10 text-center space-y-10 animate-in zoom-in-95 duration-300 relative overflow-hidden`}>
-          <div className={`absolute top-0 left-0 right-0 h-1 ${result.success ? 'bg-emerald-500' : 'bg-red-600'} animate-pulse`} />
-          <div className="space-y-2">
-            <h2 className={`retro-font text-4xl md:text-6xl ${result.success ? 'text-emerald-500' : 'text-red-600'} uppercase tracking-widest`}> {result.success ? 'Victory' : 'Defeat'} </h2>
-            <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-[0.5em]">Sector Operations Concluded</p>
-          </div>
-          <div className="p-8 bg-black/40 border border-zinc-800 rounded-lg space-y-6">
-             <div className="flex justify-between items-center text-left">
-                <span className="text-[11px] font-mono text-zinc-500 uppercase tracking-widest">Status</span>
-                <span className={`retro-font text-xs ${result.success ? 'text-emerald-400' : 'text-red-400'} uppercase`}>{result.success ? 'MISSION ACCOMPLISHED' : 'ASSET TERMINATED'}</span>
-             </div>
-             <div className="flex justify-between items-center text-left border-t border-zinc-800 pt-4">
-                <span className="text-[11px] font-mono text-zinc-500 uppercase tracking-widest">Resources Recovered</span>
-                <span className="retro-font text-lg text-yellow-500 uppercase">₿{result.reward.toLocaleString()}</span>
-             </div>
-          </div>
-          <button onClick={() => { audioService.playSfx('click'); onReturn(); }} className={`w-full py-6 rounded-sm retro-font text-[12px] uppercase tracking-[0.4em] transition-all shadow-xl active:translate-y-1 border-b-4 ${result.success ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-800' : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-400 border-zinc-950'}`} > Return to Command </button>
-       </div>
+      <div className="absolute left-6 top-1/2 -translate-y-1/2 h-[60vh] w-6 flex flex-col items-center z-50"><div className="w-[1px] h-full bg-white/10" /><input type="range" orientation="vertical" min="0" max="100" value={vScrollPos} onChange={handleVScroll} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" style={{ appearance: 'slider-vertical' as any }} /><div className="absolute w-2.5 h-12 bg-white/5 border border-white/20 rounded-full pointer-events-none backdrop-blur-xl shadow-lg" style={{ top: `${vScrollPos}%`, transform: 'translateY(-50%)' }} /></div>
+      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-[60vw] h-6 flex flex-row items-center z-50"><div className="h-[1px] w-full bg-white/10" /><input type="range" min="0" max="100" value={hScrollPos} onChange={handleHScroll} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" /><div className="absolute h-2.5 w-12 bg-white/5 border border-white/20 rounded-full pointer-events-none backdrop-blur-xl shadow-lg" style={{ left: `${hScrollPos}%`, transform: 'translateX(-50%)' }} /></div>
+      <div className="absolute top-6 left-14 flex flex-col gap-3 z-50"><div className="flex gap-2"><button onClick={() => setCamZoom(prev => Math.min(prev + 0.2, 4))} className="w-11 h-11 bg-white/5 backdrop-blur-xl border border-white/10 retro-font text-xs hover:bg-white/10 hover:border-white/30 rounded-lg flex items-center justify-center transition-all shadow-xl">+</button><button onClick={() => setCamZoom(prev => Math.max(prev - 0.2, 0.005))} className="w-11 h-11 bg-white/5 backdrop-blur-xl border border-white/10 retro-font text-xs hover:bg-white/10 hover:border-white/30 rounded-lg flex items-center justify-center transition-all shadow-xl">-</button><button onClick={focusOnSelected} disabled={!selectedEntity} className={`w-11 h-11 bg-white/5 backdrop-blur-xl border border-white/10 flex items-center justify-center rounded-lg transition-all shadow-xl ${!selectedEntity ? 'opacity-20' : 'hover:bg-white/10 hover:border-white/30 text-emerald-400'}`} title="Focus Matrix"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button><button onClick={resetView} className="w-11 h-11 bg-white/5 backdrop-blur-xl border border-white/10 flex items-center justify-center rounded-lg hover:bg-white/10 hover:border-white/30 text-zinc-400 transition-all shadow-xl" title="Outer Scan"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></button></div></div>
+      <div className="absolute bottom-12 left-12 right-12 flex justify-between items-end pointer-events-none z-50"><div className="bg-zinc-950/40 backdrop-blur-2xl border border-white/10 p-5 rounded-xl flex items-center gap-8 pointer-events-auto shadow-2xl"><div className="flex items-center gap-5 border-r border-white/10 pr-8"><div className="w-20 h-20 bg-emerald-500/5 border border-emerald-500/20 rounded-xl flex items-center justify-center text-5xl shadow-inner animate-pulse-slow">{pilotAvatar}</div><div><div className="retro-font text-[7px] text-zinc-500 uppercase tracking-[0.3em] mb-1">Sector Commander</div><div className="retro-font text-sm text-emerald-400 uppercase tracking-wide">{pilotName}</div></div></div><div className="flex items-center gap-5"><div className="w-20 h-20 bg-white/5 border border-white/10 rounded-xl p-3"><ShipIcon shape={SHIPS.find(s=>s.id === selectedShipId)?.shape || 'arrow'} color={shipColors[selectedShipId] || '#fff'} /></div><div className="flex flex-col gap-3"><button onClick={onOpenWarp} className="px-6 py-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 retro-font text-[9px] uppercase rounded-lg transition-all backdrop-blur-md">Jump</button><button onClick={onReturnHome} className="px-6 py-2 bg-white/5 hover:bg-white/10 border border-white/10 retro-font text-[9px] uppercase rounded-lg transition-all backdrop-blur-md">Home</button></div></div></div><div className="w-[280px] md:w-80 bg-zinc-950/40 border border-white/10 p-6 flex flex-col gap-4 shadow-2xl backdrop-blur-2xl rounded-xl pointer-events-auto"><div className="flex justify-between items-center border-b border-white/10 pb-3"><span className="retro-font text-[8px] md:text-[9px] text-zinc-500 uppercase tracking-[0.3em]">Tactical Feed</span><button onClick={() => { setIsScanning(true); setTimeout(() => setIsScanning(false), 1500); audioService.playSfx('transition'); }} className={`text-emerald-400 text-[8px] md:text-[9px] retro-font uppercase transition-all ${isScanning ? 'opacity-30' : 'animate-pulse'}`}>{isScanning ? 'Streaming...' : 'Sync Feed'}</button></div><div className="flex-grow overflow-y-auto max-h-32 md:max-h-48 space-y-1.5 custom-scrollbar pr-3"><div onClick={() => selectEntity('sun')} className={`p-2 font-mono text-[10px] md:text-[11px] cursor-pointer transition-all flex justify-between uppercase rounded-lg border ${selectedEntityId === 'sun' ? 'bg-white/10 text-orange-400 border-white/10' : 'text-zinc-500 border-transparent hover:text-zinc-200'}`}><span>{SUN_OBJECT.name}</span><span className="text-orange-900/50 text-[8px] tracking-widest">[NUCLEUS]</span></div>{planets.map((p: any) => (<div key={p.id} onClick={() => selectEntity(p.id)} className={`p-2 font-mono text-[10px] md:text-[11px] cursor-pointer transition-all flex justify-between uppercase rounded-lg border ${selectedEntityId === p.id ? 'bg-white/10 text-emerald-400 border-white/10' : 'text-zinc-500 border-transparent hover:text-zinc-200'}`}><span>{p.name}</span><span className={`text-[8px] opacity-70 ${p.status === 'occupied' ? 'text-red-400' : (p.status === 'friendly' ? 'text-emerald-400' : 'text-blue-400')}`}>[{p.status}]</span></div>))}</div>{selectedEntity && (<div className="animate-in fade-in slide-in-from-bottom duration-500 space-y-4 pt-4 border-t border-white/10"><div className={`retro-font text-[9px] md:text-xs uppercase tracking-tight ${selectedEntity.id === 'sun' ? 'text-orange-400' : 'text-emerald-400'}`}>{selectedEntity.name}</div><p className="text-[8px] md:text-[10px] font-mono text-zinc-400 uppercase leading-relaxed h-12 md:h-20 overflow-y-auto custom-scrollbar pr-1">{selectedEntity.description}</p>{selectedEntity.id !== 'sun' && (<button onClick={() => onArrival(selectedEntity)} className={`w-full py-4 retro-font text-[9px] border rounded-lg uppercase transition-all shadow-xl backdrop-blur-md ${selectedEntity.status === 'friendly' ? 'bg-blue-500/5 hover:bg-blue-500/15 border-blue-500/40 text-blue-300' : 'bg-emerald-500/5 hover:bg-emerald-500/15 border-emerald-500/40 text-emerald-300'}`}>{selectedEntity.status === 'friendly' ? 'Initiate Landing' : 'Lock Target'}</button>)}</div>)}</div></div>
+      {isScanning && <div className="absolute inset-0 z-40 pointer-events-none flex items-center justify-center"><div className="w-full h-[1px] bg-emerald-500/20 shadow-[0_0_30px_emerald] animate-scan-line" /></div>}
+      <style>{` 
+        @keyframes scan-line { 0% { transform: translateY(-50vh); } 100% { transform: translateY(50vh); } } 
+        .animate-scan-line { animation: scan-line 1.5s linear; } 
+        input[type=range] { writing-mode: bt-lr; }
+        .animate-spin-slow { animation: spin 18s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .animate-pulse-slow { animation: pulse-slow 3s ease-in-out infinite; }
+        @keyframes pulse-slow { 0%, 100% { opacity: 0.8; } 50% { opacity: 0.4; } }
+      `}</style>
     </div>
   );
 };

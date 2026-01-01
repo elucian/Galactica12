@@ -1,6 +1,6 @@
 
-// CHECKPOINT: Defender V5.12
-// VERSION: V5.12
+// CHECKPOINT: Defender V20.0
+// VERSION: V20.0 - Advanced Lunar Mechanics
 import { ShipConfig, Weapon, Shield, WeaponType, Planet, QuadrantType } from './types';
 
 export const INITIAL_CREDITS = 50000;
@@ -82,38 +82,42 @@ export const SHIELDS: Shield[] = [
 
 const getBaseSpeed = (radius: number) => 0.0052 / Math.sqrt(radius);
 
-// Extended Planet interface internally for atmosphere
 export interface ExtendedPlanet extends Planet {
   atmosphereColor?: string;
 }
 
 export const PLANETS: ExtendedPlanet[] = [
   { 
-    id: 'p1', name: 'Gliese Prime', description: 'Once a lush garden world, now under heavy siege.', 
-    difficulty: 1, status: 'siege', orbitRadius: 38, orbitSpeed: getBaseSpeed(38), orbitDirection: 1, size: 2.2, color: '#064e3b',
+    id: 'p1', name: 'Gliese Prime', description: 'A lush garden world and key human colony. Peaceful and high-tech.', 
+    difficulty: 1, status: 'friendly', orbitRadius: 38, orbitSpeed: getBaseSpeed(38), orbitDirection: 1, size: 2.2, color: '#064e3b',
     quadrant: QuadrantType.ALFA,
     atmosphereColor: 'rgba(52, 211, 153, 0.3)',
-    moons: [{ id: 'm1_1', name: 'Gliese Moon Alpha', difficulty: 1, angle: 0, distance: 40, color: '#334155', size: 0.4, orbitDirection: 1, inclination: 0 }]
+    moons: [
+      { id: 'm1_1', name: 'Gliese Alpha', difficulty: 1, angle: 0, distance: 65, color: '#94a3b8', size: 0.5, orbitDirection: 1, inclination: 0 },
+      { id: 'm1_2', name: 'Gliese Beta', difficulty: 1, angle: 160, distance: 95, color: '#475569', size: 0.3, orbitDirection: 1, inclination: 0 }
+    ]
   },
   { 
     id: 'p_alfa_3', name: 'Krios IV', description: 'Harsh rocky world used as an outpost.', 
     difficulty: 2, status: 'occupied', orbitRadius: 98, orbitSpeed: getBaseSpeed(98), orbitDirection: 1, size: 2.0, color: '#431407',
     quadrant: QuadrantType.ALFA, 
     moons: [
-      { id: 'm_alfa_3_1', name: 'Krios Rock', difficulty: 2, angle: 45, distance: 35, color: '#1e293b', size: 0.3, orbitDirection: -1, inclination: 0 },
-      { id: 'm_alfa_3_2', name: 'Krios Sentinel', difficulty: 2, angle: 180, distance: 45, color: '#4b5563', size: 0.25, orbitDirection: 1, inclination: 0 }
+      { id: 'm_alfa_3_1', name: 'Krios Rock', difficulty: 2, angle: 45, distance: 60, color: '#334155', size: 0.4, orbitDirection: -1, inclination: 0 },
+      { id: 'm_alfa_3_2', name: 'Krios Sentinel', difficulty: 2, angle: 180, distance: 90, color: '#1e293b', size: 0.3, orbitDirection: 1, inclination: 0 }
     ]
   },
   { 
     id: 'p2', name: 'Novus-7', description: 'A mining world completely overrun by hostile insectoids.', 
-    difficulty: 3, status: 'occupied', orbitRadius: 28, orbitSpeed: getBaseSpeed(28), orbitDirection: 1, size: 0.9, color: '#450a0a',
-    quadrant: QuadrantType.BETA, moons: []
+    difficulty: 3, status: 'occupied', orbitRadius: 28, orbitSpeed: getBaseSpeed(28), orbitDirection: 1, size: 1.5, color: '#450a0a',
+    quadrant: QuadrantType.BETA, moons: [
+      { id: 'm_beta_2_1', name: 'Obsidian', difficulty: 3, angle: 0, distance: 55, color: '#18181b', size: 0.4, orbitDirection: 1, inclination: 0 }
+    ]
   },
   { 
     id: 'p_beta_3', name: 'Midas Prime', description: 'Rich in gold-based electronics. A high priority for the aliens.', 
     difficulty: 4, status: 'occupied', orbitRadius: 45, orbitSpeed: getBaseSpeed(45), orbitDirection: 1, size: 2.1, color: '#3f2b05',
     quadrant: QuadrantType.BETA,
-    moons: [{ id: 'm_beta_3_1', name: 'Luster Moon', difficulty: 3, angle: 90, distance: 40, color: '#1e293b', size: 0.35, orbitDirection: 1, inclination: 0 }]
+    moons: [{ id: 'm_beta_3_1', name: 'Luster Moon', difficulty: 3, angle: 90, distance: 65, color: '#64748b', size: 0.35, orbitDirection: 1, inclination: 0 }]
   },
   { 
     id: 'p_beta_4', name: 'Vesperia', description: 'Cloud world with suspended research stations.', 
@@ -140,14 +144,14 @@ export const PLANETS: ExtendedPlanet[] = [
     atmosphereColor: 'rgba(248, 113, 113, 0.3)'
   },
   { 
-    id: 'p3', name: 'Calyx V', description: 'Gigantic crimson gas giant. Its atmospheric turbulence is visible across the sector.', 
+    id: 'p3', name: 'Calyx V', description: 'Gigantic crimson gas giant with multiple stable lunar orbits.', 
     difficulty: 0, status: 'occupied', orbitRadius: 80, orbitSpeed: getBaseSpeed(80), orbitDirection: 1, size: 4.0, color: '#b91c1c',
     quadrant: QuadrantType.GAMA, isGasGiant: true, hasRings: true,
     atmosphereColor: 'rgba(239, 68, 68, 0.2)',
     moons: [
-      { id: 'm_gama_1', name: 'Aeolus', difficulty: 5, angle: 0, distance: 65, color: '#451a03', size: 0.8, orbitDirection: 1, inclination: 0 },
-      { id: 'm_gama_2', name: 'Boreas', difficulty: 6, angle: 120, distance: 90, color: '#064e3b', size: 0.7, orbitDirection: 1, inclination: 0 },
-      { id: 'm_gama_3', name: 'Zephyrus', difficulty: 5, angle: 240, distance: 115, color: '#082f49', size: 0.9, orbitDirection: -1, inclination: 0 }
+      { id: 'm_gama_1', name: 'Aeolus', difficulty: 5, angle: 0, distance: 80, color: '#451a03', size: 0.8, orbitDirection: 1, inclination: 0 },
+      { id: 'm_gama_2', name: 'Boreas', difficulty: 6, angle: 120, distance: 110, color: '#064e3b', size: 0.7, orbitDirection: 1, inclination: 0 },
+      { id: 'm_gama_3', name: 'Zephyrus', difficulty: 5, angle: 240, distance: 140, color: '#082f49', size: 0.9, orbitDirection: -1, inclination: 0 }
     ]
   },
   { 
@@ -166,8 +170,8 @@ export const PLANETS: ExtendedPlanet[] = [
     quadrant: QuadrantType.DELTA, isGasGiant: true, hasRings: true,
     atmosphereColor: 'rgba(220, 38, 38, 0.4)',
     moons: [
-      { id: 'm_delta_3_1', name: 'Umbra', difficulty: 9, angle: 45, distance: 55, color: '#4b5563', size: 0.8, orbitDirection: 1, inclination: 0 },
-      { id: 'm_delta_3_2', name: 'Phobos Delta', difficulty: 10, angle: 180, distance: 85, color: '#450a0a', size: 1.0, orbitDirection: 1, inclination: 0 }
+      { id: 'm_delta_3_1', name: 'Umbra', difficulty: 9, angle: 45, distance: 85, color: '#4b5563', size: 0.8, orbitDirection: 1, inclination: 0 },
+      { id: 'm_delta_3_2', name: 'Phobos Delta', difficulty: 10, angle: 180, distance: 115, color: '#450a0a', size: 1.0, orbitDirection: 1, inclination: 0 }
     ]
   },
   { 
