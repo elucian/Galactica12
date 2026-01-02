@@ -1,6 +1,6 @@
 
-// CHECKPOINT: Defender V15.15
-// VERSION: V15.15 - Refined Cursor & Zoom Scaling
+// CHECKPOINT: Defender V15.19
+// VERSION: V15.19 - Sector State Isolation
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { GameState, Planet, Moon, MissionType, ShipConfig, Weapon, Shield, GameSettings, EquippedWeapon, WeaponType, QuadrantType, ShipFitting } from './types';
 import { INITIAL_CREDITS, SHIPS, WEAPONS, SHIELDS, PLANETS } from './constants';
@@ -198,7 +198,7 @@ const App: React.FC = () => {
         </div>
       )}
       {screen === 'warp' && <WarpTransition onComplete={() => { setGameState(p => ({ ...p, currentQuadrant: targetQuadrant })); setScreenState('map'); }} />}
-      {screen === 'launch' && <LaunchSimulation onComplete={() => setScreenState('map')} />}
+      {screen === 'launch' && <WarpTransition onComplete={() => setScreenState('map')} />}
       {screen === 'hangar' && (
         <div className="flex-grow flex flex-col h-full bg-zinc-950 relative overflow-hidden">
            <Starfield count={50} isFixed />
@@ -256,7 +256,7 @@ const App: React.FC = () => {
            )}
         </div>
       )}
-      {screen === 'map' && (<MapScreen planets={PLANETS.filter(p => p.quadrant === gameState.currentQuadrant)} onArrival={onArrival} currentQuadrant={gameState.currentQuadrant} onOpenWarp={() => setIsWarpDialogOpen(true)} initialFocusId={gameState.dockedPlanetId} pilotAvatar={gameState.pilotAvatar} pilotName={gameState.pilotName} selectedShipId={gameState.selectedShipId} shipColors={gameState.shipColors} onReturnHome={handleReturnHome} autoDock={isAutoDocking} />)}
+      {screen === 'map' && (<MapScreen key={gameState.currentQuadrant} planets={PLANETS.filter(p => p.quadrant === gameState.currentQuadrant)} onArrival={onArrival} currentQuadrant={gameState.currentQuadrant} onOpenWarp={() => setIsWarpDialogOpen(true)} initialFocusId={gameState.dockedPlanetId} pilotAvatar={gameState.pilotAvatar} pilotName={gameState.pilotName} selectedShipId={gameState.selectedShipId} shipColors={gameState.shipColors} onReturnHome={handleReturnHome} autoDock={isAutoDocking} />)}
       {screen === 'briefing' && (<div className="flex-grow flex items-center justify-center p-6 bg-black relative"><Starfield count={80} isFixed /><div className="max-w-2xl w-full bg-white/5 border border-white/10 p-6 md:p-10 space-y-6 md:space-y-8 rounded-lg shadow-2xl z-10 backdrop-blur-2xl"><h2 className="retro-font text-sm md:text-2xl text-emerald-400 border-b border-white/5 pb-4 uppercase tracking-widest">Tactical Briefing</h2><p className="font-mono text-xs md:text-xl text-white uppercase leading-relaxed max-h-[30vh] overflow-y-auto custom-scrollbar">{briefing || "Decrypting transmission..."}</p><div className="flex flex-col md:flex-row gap-4"><button onClick={() => setScreenState('map')} className="w-full py-4 bg-white/5 hover:bg-white/10 border border-white/10 retro-font text-[10px] rounded-lg uppercase transition-all backdrop-blur-md">Hold Position</button><button onClick={() => setScreenState('game')} className="w-full py-4 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/40 retro-font text-[10px] rounded-lg uppercase transition-all backdrop-blur-md shadow-lg">Engage</button></div></div></div>)}
       {screen === 'game' && currentShip && (<div className="flex-grow flex items-center justify-center relative"><GameEngine ship={currentShip} weapons={[]} shield={null} missionType={gameState.currentMission!} difficulty={5} onGameOver={(success) => { setLastResult({ success, reward: success ? 10000 : 2500 }); setGameState(p => ({ ...p, credits: p.credits + (success ? 10000 : 2500) })); setScreenState('results'); }} isFullScreen={true} playerColor={gameState.shipColors[gameState.selectedShipId!] || currentShip.defaultColor || '#10b981'} /></div>)}
       {screen === 'results' && lastResult && (
@@ -299,8 +299,8 @@ const MapScreen = ({ planets, onArrival, currentQuadrant, onOpenWarp, initialFoc
   const [isStatusMinimized, setIsStatusMinimized] = useState(false);
   const [isTacticalMinimized, setIsTacticalMinimized] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [mouseClientPos, setMouseClientPos] = useState({ x: 0, y: 0 });
   
-  // Selection Rectangle State
   const [rectBounds, setRectBounds] = useState<{ x1: number, y1: number, x2: number, y2: number } | null>(null);
   const [isDrawingRect, setIsDrawingRect] = useState(false);
   const [zoomCountdown, setZoomCountdown] = useState<number | null>(null);
@@ -434,7 +434,6 @@ const MapScreen = ({ planets, onArrival, currentQuadrant, onOpenWarp, initialFoc
     else if (selectedEntity.id !== 'sun') { const data = getPlanetOrbitData(selectedEntity); x = data.x; y = data.y; }
     
     const worldSize = (selectedEntity.size * 25);
-    // [Fix]: Target zoom such that the object is roughly 48 pixels wide on screen (approx "dime size")
     const targetZoom = 48 / worldSize;
     
     setIsAnimating(true);
@@ -491,8 +490,21 @@ const MapScreen = ({ planets, onArrival, currentQuadrant, onOpenWarp, initialFoc
     return closestId;
   }, [camZoom, camOffset, getPlanetOrbitData, isGama, planets, cometVisuals]);
 
+  const isNearEdge = useCallback((clientX: number, clientY: number) => {
+    const rect = outerWrapperRef.current?.getBoundingClientRect();
+    if (!rect) return false;
+    const margin = 30;
+    return (
+      clientX < rect.left + margin || 
+      clientX > rect.right - margin || 
+      clientY < rect.top + margin || 
+      clientY > rect.bottom - margin
+    );
+  }, []);
+
   const handleMouseMove = (e: React.MouseEvent) => { 
     if (isIntroZooming || isCalculating) return;
+    setMouseClientPos({ x: e.clientX, y: e.clientY });
     if (isDragging) {
       const dx = (e.clientX - dragStart.x) / camZoom; 
       const dy = (e.clientY - dragStart.y) / camZoom; 
@@ -509,6 +521,11 @@ const MapScreen = ({ planets, onArrival, currentQuadrant, onOpenWarp, initialFoc
 
   const handleMouseDown = (e: React.MouseEvent) => { 
     if (isIntroZooming || isCalculating) return; 
+    
+    // Safety: Ignore if clicking buttons, inputs, or UI panels specifically
+    const target = e.target as HTMLElement;
+    if (target.tagName === 'BUTTON' || target.tagName === 'INPUT' || target.closest('.ui-panel')) return;
+
     const hitId = getHitEntity(e.clientX, e.clientY);
     
     if (zoomTimerRef.current) {
@@ -526,6 +543,9 @@ const MapScreen = ({ planets, onArrival, currentQuadrant, onOpenWarp, initialFoc
         selectEntity(hitId);
       }
     } else {
+      // strictly block tactical zoom when near sides of the screen (30px margin)
+      if (isNearEdge(e.clientX, e.clientY)) return;
+
       setIsDrawingRect(true);
       setRectBounds({ x1: e.clientX, y1: e.clientY, x2: e.clientX, y2: e.clientY });
     }
@@ -582,14 +602,13 @@ const MapScreen = ({ planets, onArrival, currentQuadrant, onOpenWarp, initialFoc
   const reticleOffset = 16 / camZoom; 
   const starVelocity = (isTracking && selectedEntityId === 'comet_gama') ? cometState.current.velocity : { x: 0, y: 0 };
 
-  // [Fix]: Refined cursor logic as per user requirements
   const mapCursorClass = isCalculating
     ? 'cursor-wait'
     : (isDragging 
         ? 'cursor-grabbing' 
         : (hoveredEntityId 
             ? (hoveredEntityId === selectedEntityId ? 'cursor-grab' : 'cursor-pointer') 
-            : 'cursor-crosshair'));
+            : (isNearEdge(mouseClientPos.x, mouseClientPos.y) ? 'cursor-default' : 'cursor-crosshair')));
 
   const drawRectStyle = useMemo(() => {
     if (!rectBounds) return null;
@@ -599,6 +618,16 @@ const MapScreen = ({ planets, onArrival, currentQuadrant, onOpenWarp, initialFoc
     const h = Math.abs(rectBounds.y2 - rectBounds.y1);
     return { left: x, top: y, width: w, height: h };
   }, [rectBounds]);
+
+  // Polar Jets Logic for Delta Black Hole
+  // Optimized for 30s cycle, 10s active, with precise oscillation
+  const jetCycle = 30;
+  const jetDuration = 10;
+  const isJetActive = (localTime % jetCycle) < jetDuration;
+  const activeTime = localTime % jetCycle; // 0 to 10 when active
+  // 3 oscillations back and forth over 10 seconds (f = 0.3 Hz)
+  const jetOscillation = isJetActive ? Math.sin((activeTime / jetDuration) * Math.PI * 6) * 10 : 0;
+  const axialTilt = 10;
 
   return (
     <div ref={outerWrapperRef} className={`flex-grow w-full relative bg-[#010103] flex items-center justify-center overflow-hidden select-none ${mapCursorClass}`} onMouseMove={handleMouseMove} onMouseDown={handleMouseDown} onMouseUp={handleMouseUp} onMouseLeave={(e) => handleMouseUp(e)}>
@@ -615,6 +644,18 @@ const MapScreen = ({ planets, onArrival, currentQuadrant, onOpenWarp, initialFoc
         <div className="relative w-full h-full flex items-center justify-center pointer-events-none">
             {/* SUN SYSTEM */}
             <div className="absolute flex items-center justify-center pointer-events-none sun-pivot" style={{ left: '50%', top: '50%', width: 0, height: 0 }}>
+              {/* Polar Jets for Delta Singularity */}
+              {isDelta && isJetActive && (
+                <div className="absolute z-10" style={{ transform: `rotate(${axialTilt + jetOscillation}deg)` }}>
+                   {/* Top Jet */}
+                   <div className="absolute bottom-[50px] left-1/2 -translate-x-1/2 w-4 md:w-6 h-[800px] bg-[linear-gradient(to_top,rgba(59,130,246,0.8)_0%,rgba(59,130,246,0.3)_40%,transparent_100%)] blur-[8px] animate-pulse" />
+                   <div className="absolute bottom-[50px] left-1/2 -translate-x-1/2 w-1 md:w-2 h-[1200px] bg-white opacity-40 blur-[2px]" />
+                   {/* Bottom Jet */}
+                   <div className="absolute top-[50px] left-1/2 -translate-x-1/2 w-4 md:w-6 h-[800px] bg-[linear-gradient(to_bottom,rgba(59,130,246,0.8)_0%,rgba(59,130,246,0.3)_40%,transparent_100%)] blur-[8px] animate-pulse" />
+                   <div className="absolute top-[50px] left-1/2 -translate-x-1/2 w-1 md:w-2 h-[1200px] bg-white opacity-40 blur-[2px]" />
+                </div>
+              )}
+
               <div className={`absolute rounded-full transition-all z-[30]`} 
                    style={{ 
                      width: SUN_OBJECT.size * 25 + 'px', height: SUN_OBJECT.size * 25 + 'px', 
